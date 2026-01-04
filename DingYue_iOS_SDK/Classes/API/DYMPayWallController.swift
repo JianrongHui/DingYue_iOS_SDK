@@ -28,6 +28,8 @@ public class DYMPayWallController: UIViewController, UIGestureRecognizerDelegate
     var loadingTimer:Timer?
     var currentPaywallId:String?
     var extras:[String:Any]?
+    private var h5OverrideAutoCloseOnSuccess = false
+    private var h5OverrideAutoCloseOnRestore = false
     
     // MARK: - 手势识别器
     private var panGestureRecognizer: UIPanGestureRecognizer?
@@ -49,7 +51,8 @@ public class DYMPayWallController: UIViewController, UIGestureRecognizerDelegate
         "vip_terms",
         "vip_privacy",
         "vip_purchase",
-        "vip_choose"
+        "vip_choose",
+        "vip_page_options"
     ]
     private lazy var webCustomConfiguration: WKWebViewConfiguration = {
         let preference = WKPreferences()
@@ -75,6 +78,14 @@ public class DYMPayWallController: UIViewController, UIGestureRecognizerDelegate
     private lazy var eventManager: DYMEventManager = {
         return DYMEventManager.shared
     }()
+
+    private var autoCloseOnSuccess: Bool {
+        return DYMDefaultsManager.shared.cachedPaywallPageOptions?.resolvedAutoCloseOnSuccess ?? true
+    }
+
+    private var autoCloseOnRestore: Bool {
+        return DYMDefaultsManager.shared.cachedPaywallPageOptions?.resolvedAutoCloseOnRestore ?? true
+    }
 
     public override func viewDidLoad() {
         super.viewDidLoad()
@@ -403,7 +414,11 @@ extension DYMPayWallController: WKNavigationDelegate, WKScriptMessageHandler {
         //传给内购页的数据字典
         var dic = [
             "system_language":languageCode,
-            "products":productsArray
+            "products":productsArray,
+            "page_options": [
+                "auto_close_on_success": autoCloseOnSuccess,
+                "auto_close_on_restore": autoCloseOnRestore
+            ]
         ] as [String : Any]
         
         if let extra = extras {
@@ -431,25 +446,42 @@ extension DYMPayWallController: WKNavigationDelegate, WKScriptMessageHandler {
                 guard let self = self else { return }
                 self.completion?(receipt,purchaseResult,purchasedProduct,error)
                 if error == nil {
-                    self.trackWithPayWallInfo(eventName: "RESTORE_PURCHASE_SUCCESS")
-                    self.dismiss(animated: true, completion: nil)
+                    var extraPayload: [String: Any]? = nil
+                    if let summary = DYMEventReporter.customerInfoSummary(from: purchaseResult) {
+                        extraPayload = ["customer_info_summary": summary]
+                    }
+                    self.trackWithPayWallInfo(eventName: "RESTORE_PURCHASE_SUCCESS", extra: extraPayload)
+                    let shouldAutoClose = self.autoCloseOnRestore && !self.h5OverrideAutoCloseOnRestore
+                    if shouldAutoClose {
+                        self.dismiss(animated: true, completion: nil)
+                    }
                 } else {
-                    self.trackWithPayWallInfo(eventName: "RESTORE_PURCHASE_FAIL")
+                    let extraPayload = DYMEventReporter.errorInfo(from: error)
+                    self.trackWithPayWallInfo(eventName: "RESTORE_PURCHASE_FAIL", extra: extraPayload)
                 }
             }
             
             self.delegate?.clickRestoreButton?(baseViewController: self)
         } else if message.name == "vip_terms" {
-            eventManager.track(event: "ABOUT_TERMSOFSERVICE")
+            trackWithPayWallInfo(eventName: "ABOUT_TERMSOFSERVICE")
             if let delegate = self.delegate, delegate.responds(to: #selector(delegate.clickTermsAction(baseViewController:))) {
                    delegate.clickTermsAction?(baseViewController: self)
                }
         }else if message.name == "vip_privacy" {
-            eventManager.track(event: "ABOUT_PRIVACYPOLICY")
+            trackWithPayWallInfo(eventName: "ABOUT_PRIVACYPOLICY")
             if let delegate = self.delegate, delegate.responds(to: #selector(delegate.clickPrivacyAction(baseViewController:))) {
                   delegate.clickPrivacyAction?(baseViewController: self)
               }
             
+        } else if message.name == "vip_page_options" {
+            if let options = message.body as? [String: Any] {
+                if let autoClose = options["auto_close_on_success"] as? Bool {
+                    h5OverrideAutoCloseOnSuccess = !autoClose
+                }
+                if let autoClose = options["auto_close_on_restore"] as? Bool {
+                    h5OverrideAutoCloseOnRestore = !autoClose
+                }
+            }
         }else if message.name == "vip_purchase" {
 
             let dic = message.body as? Dictionary<String,Any>
@@ -465,7 +497,8 @@ extension DYMPayWallController: WKNavigationDelegate, WKScriptMessageHandler {
                 self.buyWithProductId(productId, productPrice: productPrice)
             } else {
                 self.completion?(nil,nil,nil,.noProductIds)
-                self.eventManager.track(event: "PURCHASE_FAIL_DETAIL", extra: "no productId from h5")
+                let errorPayload = DYMEventReporter.errorInfo(from: DYMError.noProductIds)
+                self.trackWithPayWallInfo(eventName: "PURCHASE_FAIL_DETAIL", extra: errorPayload)
             }
             
             self.delegate?.clickPurchaseButton?(baseViewController: self)
@@ -480,25 +513,47 @@ extension DYMPayWallController: WKNavigationDelegate, WKScriptMessageHandler {
             guard let self = self else { return }
             self.completion?(receipt,purchaseResult,purchasedProduct,error)
             if error == nil {
-                self.trackWithPayWallInfo(eventName: "PURCHASE_SUCCESS")
+                var extraPayload: [String: Any]? = nil
+                if let summary = DYMEventReporter.customerInfoSummary(from: purchaseResult, fallbackProduct: purchasedProduct) {
+                    extraPayload = ["customer_info_summary": summary]
+                }
+                self.trackWithPayWallInfo(eventName: "PURCHASE_SUCCESS", extra: extraPayload)
 
-                self.dismiss(animated: true, completion: nil)
+                let shouldAutoClose = self.autoCloseOnSuccess && !self.h5OverrideAutoCloseOnSuccess
+                if shouldAutoClose {
+                    self.dismiss(animated: true, completion: nil)
+                }
             } else {
-                self.trackWithPayWallInfo(eventName: "PURCHASE_FAIL")
-                self.eventManager.track(event: "PURCHASE_FAIL_DETAIL", extra: error?.debugDescription)
+                let errorPayload = DYMEventReporter.errorInfo(from: error)
+                self.trackWithPayWallInfo(eventName: "PURCHASE_FAIL", extra: errorPayload)
+                self.trackWithPayWallInfo(eventName: "PURCHASE_FAIL_DETAIL", extra: errorPayload)
             }
         }
     }
 
-    func trackWithPayWallInfo(eventName:String) {
-        if let paywallId = self.currentPaywallId {
-            let middleIndex = paywallId.firstIndex(of: "/")
-            let id = String(paywallId[..<middleIndex!])
-            let version = String(paywallId[paywallId.index(after: middleIndex!)...])
+    func trackWithPayWallInfo(eventName: String, extra: [String: Any]? = nil) {
+        var payload = extra ?? [:]
 
-            self.eventManager.track(event: eventName, extra: version, user: id)
-        } else {
+        if let paywallId = self.currentPaywallId, let middleIndex = paywallId.firstIndex(of: "/") {
+            let id = String(paywallId[..<middleIndex])
+            let version = String(paywallId[paywallId.index(after: middleIndex)...])
+            payload["placement_id"] = id
+            payload["placement_version"] = version
+            if let variantId = DYMDefaultsManager.shared.cachedVariationsIds[id], !variantId.isEmpty {
+                payload["variant_id"] = variantId
+            }
+        }
+
+        if payload.isEmpty {
             self.eventManager.track(event: eventName)
+            return
+        }
+
+        let jsonString = getJSONStringFromDictionary(dictionary: payload as NSDictionary)
+        if jsonString.isEmpty {
+            self.eventManager.track(event: eventName)
+        } else {
+            self.eventManager.track(event: eventName, extra: jsonString)
         }
     }
 

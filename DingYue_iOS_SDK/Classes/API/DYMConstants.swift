@@ -55,10 +55,12 @@ class DYMConstants: NSObject {
         static let cachedPayWallPageIdentifier      = "DYMSDK_Cached_PayWall_Page_Identifier"
         static let multipleLaunch            = "DYMSDK_is_Multiple_Launch"
         static let cachedPaywallName         = "DYMSDK_Cached_PayWall_Page_Name"
+        static let cachedPaywallPageOptions  = "DYMSDK_Cached_Paywall_Page_Options"
         
         static let cachedGuides              = "DYMSDK_Cached_Guide_Containers"
         static let cachedGuidePageIdentifier = "DYMSDK_Cached_Guide_Page_Identifier"
         static let cachedGuideName           = "DYMSDK_Cached_Guide_Page_Name"
+        static let cachedGuidePageOptions    = "DYMSDK_Cached_Guide_Page_Options"
 
         static let cachedDomainName          = "DYMSDK_Cached_DomainName"
         static let cachedAppId               = "DYMSDK_Cached_AppId"

@@ -42,6 +42,8 @@ public class DYMGuideController: UIViewController {
     var currentGuidePageId:String?
     var extras:[String:Any]?
     var guidePageSwiperSize:Int?
+    private var h5OverrideAutoCloseOnSuccess = false
+    private var h5OverrideAutoCloseOnRestore = false
 
     
     lazy var customIndicatiorV:NVActivityIndicatorView =  {
@@ -59,7 +61,8 @@ public class DYMGuideController: UIViewController {
         "guide_terms",
         "guide_privacy",
         "guide_purchase",
-        "guide_continue"
+        "guide_continue",
+        "guide_page_options"
     ]    
     private lazy var webCustomConfiguration: WKWebViewConfiguration = {
         let preference = WKPreferences()
@@ -86,6 +89,14 @@ public class DYMGuideController: UIViewController {
     private lazy var eventManager: DYMEventManager = {
         return DYMEventManager.shared
     }()
+
+    private var autoCloseOnSuccess: Bool {
+        return DYMDefaultsManager.shared.cachedGuidePageOptions?.resolvedAutoCloseOnSuccess ?? true
+    }
+
+    private var autoCloseOnRestore: Bool {
+        return DYMDefaultsManager.shared.cachedGuidePageOptions?.resolvedAutoCloseOnRestore ?? true
+    }
 
     
     //     懒加载 LaunchScreen view
@@ -296,7 +307,11 @@ extension DYMGuideController: WKNavigationDelegate, WKScriptMessageHandler {
         var dic = [
             "system_language":languageCode,
             "products":productsArray,
-            "purchaseSwitch":purchaseSwitch
+            "purchaseSwitch":purchaseSwitch,
+            "page_options": [
+                "auto_close_on_success": autoCloseOnSuccess,
+                "auto_close_on_restore": autoCloseOnRestore
+            ]
         ] as [String : Any]
         
         if let extra = extras {
@@ -352,24 +367,41 @@ extension DYMGuideController: WKNavigationDelegate, WKScriptMessageHandler {
                 ProgressView.stop()
                 self.completion?(receipt,purchaseResult,purchasedProduct,error)
                 if error == nil {
-                    self.trackWithPayWallInfo(eventName: "GUIDE_RESTORE_PURCHASE_SUCCESS")
-                    self.dismiss(animated: true, completion: nil)
+                    var extraPayload: [String: Any]? = nil
+                    if let summary = DYMEventReporter.customerInfoSummary(from: purchaseResult) {
+                        extraPayload = ["customer_info_summary": summary]
+                    }
+                    self.trackWithPayWallInfo(eventName: "GUIDE_RESTORE_PURCHASE_SUCCESS", extra: extraPayload)
+                    let shouldAutoClose = self.autoCloseOnRestore && !self.h5OverrideAutoCloseOnRestore
+                    if shouldAutoClose {
+                        self.dismiss(animated: true, completion: nil)
+                    }
                 } else {
-                    self.trackWithPayWallInfo(eventName: "GUIDE_RESTORE_PURCHASE_FAIL")
+                    let errorPayload = DYMEventReporter.errorInfo(from: error)
+                    self.trackWithPayWallInfo(eventName: "GUIDE_RESTORE_PURCHASE_FAIL", extra: errorPayload)
                 }
             }
             self.delegate?.clickGuideRestoreButton?(baseViewController: self)
         } else if message.name == "guide_terms" {
-            eventManager.track(event: "GUIDE_ABOUT_TERMSOFSERVICE")
+            trackWithPayWallInfo(eventName: "GUIDE_ABOUT_TERMSOFSERVICE")
             if let delegate = self.delegate, delegate.responds(to: #selector(delegate.clickGuideTermsAction(baseViewController:))) {
                    delegate.clickGuideTermsAction?(baseViewController: self)
                }
         }else if message.name == "guide_privacy" {
-            eventManager.track(event: "GUIDE_ABOUT_PRIVACYPOLICY")
+            trackWithPayWallInfo(eventName: "GUIDE_ABOUT_PRIVACYPOLICY")
             if let delegate = self.delegate, delegate.responds(to: #selector(delegate.clickGuidePrivacyAction(baseViewController:))) {
                   delegate.clickGuidePrivacyAction?(baseViewController: self)
               }
             
+        } else if message.name == "guide_page_options" {
+            if let options = message.body as? [String: Any] {
+                if let autoClose = options["auto_close_on_success"] as? Bool {
+                    h5OverrideAutoCloseOnSuccess = !autoClose
+                }
+                if let autoClose = options["auto_close_on_restore"] as? Bool {
+                    h5OverrideAutoCloseOnRestore = !autoClose
+                }
+            }
         }else if message.name == "guide_purchase" {
 
             let dic = message.body as? Dictionary<String,Any>
@@ -385,7 +417,8 @@ extension DYMGuideController: WKNavigationDelegate, WKScriptMessageHandler {
                 self.buyWithProductId(productId, productPrice: productPrice)
             } else {
                 self.completion?(nil,nil,nil,.noProductIds)
-                self.eventManager.track(event: "GUIDE_PURCHASE_FAIL_DETAIL", extra: "no productId from guide h5")
+                let errorPayload = DYMEventReporter.errorInfo(from: DYMError.noProductIds)
+                self.trackWithPayWallInfo(eventName: "GUIDE_PURCHASE_FAIL_DETAIL", extra: errorPayload)
             }
             
             self.delegate?.clickGuidePurchaseButton?(baseViewController: self)
@@ -416,25 +449,47 @@ extension DYMGuideController: WKNavigationDelegate, WKScriptMessageHandler {
             ProgressView.stop()
             self.completion?(receipt,purchaseResult,purchasedProduct,error)
             if error == nil {
-                self.trackWithPayWallInfo(eventName: "GUIDE_PURCHASE_SUCCESS")
+                var extraPayload: [String: Any]? = nil
+                if let summary = DYMEventReporter.customerInfoSummary(from: purchaseResult, fallbackProduct: purchasedProduct) {
+                    extraPayload = ["customer_info_summary": summary]
+                }
+                self.trackWithPayWallInfo(eventName: "GUIDE_PURCHASE_SUCCESS", extra: extraPayload)
 
-                self.dismiss(animated: true, completion: nil)
+                let shouldAutoClose = self.autoCloseOnSuccess && !self.h5OverrideAutoCloseOnSuccess
+                if shouldAutoClose {
+                    self.dismiss(animated: true, completion: nil)
+                }
             } else {
-                self.trackWithPayWallInfo(eventName: "GUIDE_PURCHASE_FAIL")
-                self.eventManager.track(event: "GUIDE_PURCHASE_FAIL_DETAIL", extra: error?.debugDescription)
+                let errorPayload = DYMEventReporter.errorInfo(from: error)
+                self.trackWithPayWallInfo(eventName: "GUIDE_PURCHASE_FAIL", extra: errorPayload)
+                self.trackWithPayWallInfo(eventName: "GUIDE_PURCHASE_FAIL_DETAIL", extra: errorPayload)
             }
         }
     }
 
-    func trackWithPayWallInfo(eventName:String) {
-        if let guidePageId = self.currentGuidePageId {
-            let middleIndex = guidePageId.firstIndex(of: "/")
-            let id = String(guidePageId[..<middleIndex!])
-            let version = String(guidePageId[guidePageId.index(after: middleIndex!)...])
+    func trackWithPayWallInfo(eventName: String, extra: [String: Any]? = nil) {
+        var payload = extra ?? [:]
 
-            self.eventManager.track(event: eventName, extra: version, user: id)
-        } else {
+        if let guidePageId = self.currentGuidePageId, let middleIndex = guidePageId.firstIndex(of: "/") {
+            let id = String(guidePageId[..<middleIndex])
+            let version = String(guidePageId[guidePageId.index(after: middleIndex)...])
+            payload["placement_id"] = id
+            payload["placement_version"] = version
+            if let variantId = DYMDefaultsManager.shared.cachedVariationsIds[id], !variantId.isEmpty {
+                payload["variant_id"] = variantId
+            }
+        }
+
+        if payload.isEmpty {
             self.eventManager.track(event: eventName)
+            return
+        }
+
+        let jsonString = getJSONStringFromDictionary(dictionary: payload as NSDictionary)
+        if jsonString.isEmpty {
+            self.eventManager.track(event: eventName)
+        } else {
+            self.eventManager.track(event: eventName, extra: jsonString)
         }
     }
 
@@ -473,4 +528,3 @@ extension DYMGuideController {
     }
 
 }
-
