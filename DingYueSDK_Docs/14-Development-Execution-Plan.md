@@ -11,6 +11,7 @@
 - H5：价格来自 RevenueCat，文案与样式自由
 - 事件上报：必须携带 paywall/guide 标识和 RevenueCat 上下文
 - H5 自动关闭：默认关闭，H5 可禁止自动关闭
+- 部署：Cloudflare Workers + D1 + R2 + Cloudflare CDN + Pages
 
 ## 1. 资料入口（必须先读）
 - 总览：DingYueSDK_Docs/01-Solution-Overview.md
@@ -28,7 +29,7 @@
 - 事件接口 /v1/sdk/events
 - 包上传与管理接口
 - 规则与实验分流服务端逻辑
-- PostgreSQL 表结构
+- D1 表结构
 
 **验收条件**
 - config 可返回有效 placement/variant
@@ -69,8 +70,13 @@
 
 ## 3. 后台实施步骤
 
+### 3.0 Cloudflare 资源初始化
+- Workers 项目与路由
+- D1 数据库与绑定
+- R2 bucket 与 CDN 域名
+
 ### 3.1 数据库
-- 执行 DingYueSDK_Docs/03-Database-Schema.md
+- 执行 DingYueSDK_Docs/03-Database-Schema.md（D1/SQLite）
 - 补充迁移工具与索引
 
 ### 3.2 配置服务
@@ -81,6 +87,7 @@
 
 ### 3.3 包管理服务
 - 实现 /v1/admin/packages/presign 和 /commit
+- presign 对接 Cloudflare R2（S3 兼容）
 - 校验 manifest.json 与 entry_path
 - 计算 checksum 并生成 cdn_url
 

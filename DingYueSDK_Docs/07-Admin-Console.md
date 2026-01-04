@@ -1,5 +1,10 @@
 # 管理后台页面与功能
 
+## 部署
+- Cloudflare Pages 托管管理后台
+- 通过环境变量 `VITE_API_BASE` 配置 Workers API 基址（如 https://api.yourdomain.com）
+- 静态资源与路由由 Cloudflare Pages 负责分发与回退
+
 ## App 管理
 - 应用列表：名称、环境、状态、创建时间
 - 应用详情：app_id、app_key、SDK Key 下载

@@ -4,6 +4,7 @@ info:
   version: 1.0.0
 servers:
   - url: https://api.yourdomain.com
+    description: Cloudflare Workers API gateway
 
 paths:
   /v1/sdk/config:

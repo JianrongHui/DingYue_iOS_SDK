@@ -5,6 +5,9 @@
 - 错误率：4xx、5xx、签名失败率
 - 事件链路：入库 QPS、队列积压、丢弃率
 - CDN：4xx/5xx、带宽、缓存命中率
+- Workers：请求量、CPU 时间、执行时延、5xx
+- D1：查询时延、失败率、锁等待
+- R2：上传/下载失败率、带宽、存储用量
 - SDK 指标：H5 加载成功率、购买成功率、RC 产品加载失败率
 
 ## 告警
@@ -18,6 +21,7 @@
 - app_key 加密存储
 - 日志脱敏，不记录收据、邮箱、姓名
 - 支持按 rc_app_user_id 或 app_user_id 删除数据
+- Cloudflare WAF/Rate Limiting 作为第一道防护
 
 ## 速率限制
 - /v1/sdk/config: 每设备每分钟 1 次

@@ -5,7 +5,7 @@
 ## 目录
 - 01-Solution-Overview.md - 方案总览、范围与核心流程
 - 02-Backend-APIs.md - 接口规范、鉴权、配置与事件接口
-- 03-Database-Schema.md - PostgreSQL 数据表结构
+- 03-Database-Schema.md - D1 (SQLite) 数据表结构
 - 04-Events-Dictionary.md - 事件字典、字段与错误码
 - 05-Analytics-Mapping.md - GA4/Firebase 事件映射
 - 06-Targeting-Experiments.md - 规则引擎与实验分流

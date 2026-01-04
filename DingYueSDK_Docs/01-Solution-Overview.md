@@ -17,6 +17,7 @@
 - 继续使用现有 DingYue H5 的 bridge 命名（vip_* 与 guide_*）
 - 购买成功默认关闭页面，但 H5 可关闭自动关闭
 - 分群与实验分流由服务端完成
+- 部署：API 使用 Cloudflare Workers；数据库使用 D1；H5 包存储于 R2 并通过 Cloudflare CDN 分发；管理后台使用 Cloudflare Pages
 
 ## 架构
 - SDK
@@ -27,10 +28,10 @@
   - PurchaseProvider（RevenueCat 适配）
   - EventReporter（队列、重试）
 - 后台
-  - 配置接口与规则引擎
-  - 包管理与 CDN 发布
+  - 配置接口与规则引擎（Cloudflare Workers）
+  - 包管理与 CDN 发布（R2 + Cloudflare CDN）
   - 事件收集与 GA/Firebase 转发
-  - 管理后台与统计报表
+  - 管理后台与统计报表（Cloudflare Pages）
 
 ## 核心流程
 

@@ -6,6 +6,7 @@
 - 响应为直接 JSON 对象，不使用统一 envelope
 - 时间格式统一为 RFC3339 UTC
 - SDK 与后台字段使用 snake_case
+- API 部署在 Cloudflare Workers，域名由 Cloudflare 统一接入与防护
 
 ## 鉴权 (HMAC-SHA256)
 必须包含以下 header：
@@ -153,8 +154,8 @@ Request 示例：
 
 ## 包上传流程
 1. 管理后台请求 /v1/admin/packages/presign
-2. 前端上传 zip 到对象存储
+2. 前端上传 zip 到对象存储（Cloudflare R2，S3 兼容 presign）
 3. 前端调用 /v1/admin/packages/commit
 4. 服务端解析 manifest.json 和 entry_path
-5. 服务端计算 checksum 并生成 CDN 地址
+5. 服务端计算 checksum 并生成 Cloudflare CDN 地址
 6. 包可绑定到 variant
