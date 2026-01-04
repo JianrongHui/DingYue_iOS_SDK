@@ -111,6 +111,21 @@ export const seedVariants: Variant[] = [
     created_at: "2024-01-03"
   },
   {
+    id: "var_404",
+    app_id: "app_9f21",
+    placement_id: "plc_201",
+    package_id: "pkg_811",
+    offering_id: "offer_annual",
+    product_ids: ["prod_annual", "prod_plus"],
+    priority: 2,
+    enabled: true,
+    page_options: {
+      auto_close_on_success: true,
+      auto_close_on_restore: false
+    },
+    created_at: "2024-01-10"
+  },
+  {
     id: "var_402",
     app_id: "app_9f21",
     placement_id: "plc_202",
@@ -126,6 +141,21 @@ export const seedVariants: Variant[] = [
     created_at: "2024-01-08"
   },
   {
+    id: "var_405",
+    app_id: "app_9f21",
+    placement_id: "plc_202",
+    package_id: "pkg_814",
+    offering_id: "offer_discount",
+    product_ids: ["prod_discount"],
+    priority: 2,
+    enabled: true,
+    page_options: {
+      auto_close_on_success: true,
+      auto_close_on_restore: true
+    },
+    created_at: "2024-01-18"
+  },
+  {
     id: "var_403",
     app_id: "app_7a10",
     placement_id: "plc_203",
@@ -139,5 +169,20 @@ export const seedVariants: Variant[] = [
       auto_close_on_restore: false
     },
     created_at: "2024-02-02"
+  },
+  {
+    id: "var_406",
+    app_id: "app_7a10",
+    placement_id: "plc_203",
+    package_id: "pkg_821",
+    offering_id: "offer_monthly",
+    product_ids: ["prod_basic"],
+    priority: 3,
+    enabled: false,
+    page_options: {
+      auto_close_on_success: false,
+      auto_close_on_restore: false
+    },
+    created_at: "2024-02-05"
   }
 ];
