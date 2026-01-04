@@ -413,6 +413,7 @@ tbody td {
 }
 
 .status-disabled,
+.status-inactive,
 .status-rolled_back {
   background: rgba(191, 61, 61, 0.16);
   color: #7c1f1f;
