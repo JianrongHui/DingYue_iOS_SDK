@@ -35,6 +35,13 @@ final class DYMEventReporter {
         return formatter
     }()
 
+    private static let summaryFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
     private let stateQueue = DispatchQueue(label: "com.dingyue.event.reporter")
     private let persistenceKey = "DYMSDK_Pending_Events"
     private let maxBatchSize = 20
@@ -174,7 +181,8 @@ final class DYMEventReporter {
     }
 
     private func eventPayload(for event: PendingEvent) -> [String: Any] {
-        let placementInfo = resolvePlacementInfo(extra: event.extra, user: event.user)
+        var parsedExtra = parseExtraDictionary(event.extra)
+        let placementInfo = resolvePlacementInfo(extra: event.extra, user: event.user, parsedExtra: &parsedExtra)
         var payload: [String: Any] = [
             "event_id": event.eventId,
             "event_name": event.eventName,
@@ -195,28 +203,39 @@ final class DYMEventReporter {
             payload["country"] = country
         }
 
-        if let extraObject = buildExtraObject(extra: event.extra, user: event.user) {
+        var extraObject: [String: Any]?
+        if var extraDictionary = parsedExtra {
+            applyStandardFields(from: &extraDictionary, to: &payload)
+            extraObject = buildExtraObject(extra: event.extra, user: event.user, parsedExtra: extraDictionary)
+        } else {
+            extraObject = buildExtraObject(extra: event.extra, user: event.user, parsedExtra: nil)
+        }
+
+        if isFailureEvent(event.eventName) {
+            if payload["error_message"] == nil {
+                if parsedExtra == nil, let extra = event.extra, !extra.isEmpty {
+                    payload["error_message"] = extra
+                } else {
+                    payload["error_message"] = event.eventName
+                }
+            }
+            if payload["error_code"] == nil {
+                payload["error_code"] = event.eventName
+            }
+        }
+
+        if let extraObject = extraObject, !extraObject.isEmpty {
             payload["extra"] = extraObject
         }
 
         return payload
     }
 
-    private func buildExtraObject(extra: String?, user: String?) -> [String: Any]? {
-        var extraObject: [String: Any] = [:]
+    private func buildExtraObject(extra: String?, user: String?, parsedExtra: [String: Any]?) -> [String: Any]? {
+        var extraObject = parsedExtra ?? [:]
 
-        if let extra = extra, !extra.isEmpty {
-            if let parsed = parseJSON(extra) {
-                if let parsedDict = parsed as? [String: Any] {
-                    for (key, value) in parsedDict {
-                        extraObject[key] = value
-                    }
-                } else {
-                    extraObject["raw_extra"] = parsed
-                }
-            } else {
-                extraObject["raw_extra"] = extra
-            }
+        if parsedExtra == nil, let extra = extra, !extra.isEmpty {
+            extraObject["raw_extra"] = extra
         }
 
         if let user = user, !user.isEmpty {
@@ -231,27 +250,128 @@ final class DYMEventReporter {
         return try? JSONSerialization.jsonObject(with: data, options: [])
     }
 
-    private func resolvePlacementInfo(extra: String?, user: String?) -> PlacementInfo {
+    private func parseExtraDictionary(_ extra: String?) -> [String: Any]? {
+        guard let extra = extra, !extra.isEmpty else { return nil }
+        guard let parsed = parseJSON(extra) else { return nil }
+        return parsed as? [String: Any]
+    }
+
+    private func applyStandardFields(from extra: inout [String: Any], to payload: inout [String: Any]) {
+        if let summary = removeValue(from: &extra, keys: ["customer_info_summary", "customerInfoSummary"]) as? [String: Any] {
+            payload["customer_info_summary"] = summary
+        }
+        if let errorCode = removeValue(from: &extra, keys: ["error_code", "errorCode"]) {
+            payload["error_code"] = "\(errorCode)"
+        }
+        if let errorMessage = removeValue(from: &extra, keys: ["error_message", "errorMessage"]) {
+            payload["error_message"] = "\(errorMessage)"
+        }
+        if let offeringId = removeValue(from: &extra, keys: ["offering_id", "offeringId"]) {
+            payload["offering_id"] = offeringId
+        }
+        if let productId = removeValue(from: &extra, keys: ["product_id", "productId", "platformProductId"]) {
+            payload["product_id"] = productId
+        }
+        if let productIds = removeValue(from: &extra, keys: ["product_ids", "productIds"]) {
+            payload["product_ids"] = productIds
+        }
+        if let price = removeValue(from: &extra, keys: ["price", "product_price", "productPrice"]) {
+            payload["price"] = price
+        }
+        if let currency = removeValue(from: &extra, keys: ["currency", "currencyCode"]) {
+            payload["currency"] = currency
+        }
+        if let appUserId = removeValue(from: &extra, keys: ["app_user_id", "appUserId"]) {
+            payload["app_user_id"] = appUserId
+        }
+        if let networkType = removeValue(from: &extra, keys: ["network_type", "networkType"]) {
+            payload["network_type"] = networkType
+        }
+        if let httpStatus = removeValue(from: &extra, keys: ["http_status", "httpStatus"]) {
+            payload["http_status"] = httpStatus
+        }
+    }
+
+    private func removeValue(from dictionary: inout [String: Any], keys: [String]) -> Any? {
+        for key in keys {
+            if let value = dictionary.removeValue(forKey: key) {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func isFailureEvent(_ eventName: String) -> Bool {
+        let uppercased = eventName.uppercased()
+        return uppercased.contains("FAIL")
+            || uppercased.contains("ERROR")
+            || uppercased.contains("CANCEL")
+            || uppercased.contains("CANCLED")
+            || uppercased.contains("NOT_FOUND")
+            || uppercased.contains("CHECKSUM")
+    }
+
+    private func parsePlacementIdentifier(_ identifier: String) -> (id: String, version: String)? {
+        let components = identifier.split(separator: "/", maxSplits: 1).map(String.init)
+        guard components.count == 2 else { return nil }
+        return (components[0], components[1])
+    }
+
+    private func resolvePlacementInfo(extra: String?, user: String?, parsedExtra: inout [String: Any]?) -> PlacementInfo {
         var placementId = ""
         var placementVersion = ""
+        var variantId = ""
 
-        if let extraValue = extra, let userValue = user {
-            let extraIsVersion = looksLikeVersion(extraValue)
-            let userIsVersion = looksLikeVersion(userValue)
+        if var extraDictionary = parsedExtra {
+            if let id = extraDictionary["placement_id"] as? String ?? extraDictionary["placementId"] as? String {
+                placementId = id
+                extraDictionary.removeValue(forKey: "placement_id")
+                extraDictionary.removeValue(forKey: "placementId")
+            }
+            if let version = extraDictionary["placement_version"] as? String ?? extraDictionary["placementVersion"] as? String {
+                placementVersion = version
+                extraDictionary.removeValue(forKey: "placement_version")
+                extraDictionary.removeValue(forKey: "placementVersion")
+            }
+            if let variant = extraDictionary["variant_id"] as? String ?? extraDictionary["variantId"] as? String {
+                variantId = variant
+                extraDictionary.removeValue(forKey: "variant_id")
+                extraDictionary.removeValue(forKey: "variantId")
+            }
+            parsedExtra = extraDictionary
+        }
 
-            if extraIsVersion && !userIsVersion {
+        if placementId.isEmpty || placementVersion.isEmpty {
+            if let extraValue = extra, let userValue = user {
+                let extraIsVersion = looksLikeVersion(extraValue)
+                let userIsVersion = looksLikeVersion(userValue)
+
+                if extraIsVersion && !userIsVersion {
+                    if placementId.isEmpty { placementId = userValue }
+                    if placementVersion.isEmpty { placementVersion = extraValue }
+                } else if userIsVersion && !extraIsVersion {
+                    if placementId.isEmpty { placementId = extraValue }
+                    if placementVersion.isEmpty { placementVersion = userValue }
+                } else {
+                    if placementId.isEmpty { placementId = userValue }
+                    if placementVersion.isEmpty { placementVersion = extraValue }
+                }
+            } else if placementId.isEmpty, let userValue = user {
                 placementId = userValue
-                placementVersion = extraValue
-            } else if userIsVersion && !extraIsVersion {
-                placementId = extraValue
-                placementVersion = userValue
-            } else {
-                placementId = userValue
-                placementVersion = extraValue
             }
         }
 
-        let variantId = DYMDefaultsManager.shared.cachedVariationsIds[placementId] ?? ""
+        if placementId.isEmpty || placementVersion.isEmpty {
+            if let cachedIdentifier = DYMDefaultsManager.shared.cachedPaywallPageIdentifier ?? DYMDefaultsManager.shared.cachedGuidePageIdentifier,
+               let cached = parsePlacementIdentifier(cachedIdentifier) {
+                if placementId.isEmpty { placementId = cached.id }
+                if placementVersion.isEmpty { placementVersion = cached.version }
+            }
+        }
+
+        if variantId.isEmpty {
+            variantId = DYMDefaultsManager.shared.cachedVariationsIds[placementId] ?? ""
+        }
         return PlacementInfo(placementId: placementId, placementVersion: placementVersion, variantId: variantId)
     }
 
@@ -318,6 +438,92 @@ final class DYMEventReporter {
             }
         }
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func customerInfoSummary(from purchaseResult: [[String: Any]]?, fallbackProduct: [String: Any]? = nil) -> [String: Any]? {
+        guard purchaseResult != nil || fallbackProduct != nil else {
+            return nil
+        }
+
+        if let purchaseResult = purchaseResult {
+            for item in purchaseResult {
+                if let summary = item["customer_info_summary"] as? [String: Any] {
+                    return summary
+                }
+            }
+        }
+
+        var productIds: [String] = []
+        var latestExpiration: Double?
+
+        if let purchaseResult = purchaseResult {
+            for item in purchaseResult {
+                if let id = item["platformProductId"] as? String ?? item["product_id"] as? String ?? item["productId"] as? String {
+                    if !productIds.contains(id) {
+                        productIds.append(id)
+                    }
+                }
+                if let expirationValue = item["expiresAt"] ?? item["expires_at"],
+                   let seconds = expirationSeconds(from: expirationValue) {
+                    if latestExpiration == nil || seconds > latestExpiration! {
+                        latestExpiration = seconds
+                    }
+                }
+            }
+        }
+
+        if productIds.isEmpty, let fallbackProduct = fallbackProduct {
+            if let id = fallbackProduct["product_id"] as? String ?? fallbackProduct["productId"] as? String {
+                productIds.append(id)
+            }
+        }
+
+        var summary: [String: Any] = [
+            "entitlements": [],
+            "active_subscriptions": productIds
+        ]
+
+        if let latestExpiration = latestExpiration {
+            let date = Date(timeIntervalSince1970: latestExpiration)
+            summary["latest_expiration"] = summaryFormatter.string(from: date)
+        }
+
+        return summary
+    }
+
+    static func errorInfo(from error: Error?) -> [String: Any]? {
+        guard let error = error else {
+            return nil
+        }
+        if let dymError = error as? DYMError {
+            let codeName = String(describing: dymError.dymCode)
+            let codeValue = dymError.dymCode == .none ? "\(dymError.code)" : codeName
+            return [
+                "error_code": codeValue,
+                "error_message": dymError.localizedDescription
+            ]
+        }
+        let nsError = error as NSError
+        return [
+            "error_code": "\(nsError.domain):\(nsError.code)",
+            "error_message": nsError.localizedDescription
+        ]
+    }
+
+    private static func expirationSeconds(from value: Any) -> Double? {
+        let raw: Double?
+        if let number = value as? NSNumber {
+            raw = number.doubleValue
+        } else if let string = value as? String, let number = Double(string) {
+            raw = number
+        } else {
+            raw = nil
+        }
+        guard let rawValue = raw else { return nil }
+        if rawValue > 100_000_000_000 {
+            return rawValue / 1000.0
+        }
+        return rawValue
     }
 
     private func loadPersistedEvents() {

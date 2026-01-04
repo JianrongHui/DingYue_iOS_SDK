@@ -90,9 +90,19 @@ struct DYMConfigOffering: Decodable {
     let fallbackToCurrentOffering: Bool?
 }
 
-struct DYMConfigPageOptions: Decodable {
+struct DYMConfigPageOptions: Codable {
     let autoCloseOnSuccess: Bool?
     let autoCloseOnRestore: Bool?
+}
+
+extension DYMConfigPageOptions {
+    var resolvedAutoCloseOnSuccess: Bool {
+        return autoCloseOnSuccess ?? true
+    }
+
+    var resolvedAutoCloseOnRestore: Bool {
+        return autoCloseOnRestore ?? true
+    }
 }
 
 struct DYMConfigRuleHit: Decodable {

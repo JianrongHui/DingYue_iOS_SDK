@@ -136,6 +136,22 @@ class DYMDefaultsManager {
         }
     }
 
+    var cachedPaywallPageOptions: DYMConfigPageOptions? {
+        get {
+            guard let data = defaults.data(forKey: DYMConstants.UserDefaults.cachedPaywallPageOptions) else {
+                return nil
+            }
+            return try? JSONDecoder().decode(DYMConfigPageOptions.self, from: data)
+        }
+        set {
+            if let value = newValue, let data = try? JSONEncoder().encode(value) {
+                defaults.set(data, forKey: DYMConstants.UserDefaults.cachedPaywallPageOptions)
+            } else {
+                defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedPaywallPageOptions)
+            }
+        }
+    }
+
     var cachedProducts: [Subscription]? {
         get {
             if let data = defaults.object(forKey: DYMConstants.UserDefaults.cachedProducts) as? Data, let products = try? JSONDecoder().decode([Subscription].self, from: data) {
@@ -367,10 +383,12 @@ class DYMDefaultsManager {
         defaults.removeObject(forKey: DYMConstants.UserDefaults.responseJSONCaches)
         defaults.removeObject(forKey: DYMConstants.UserDefaults.postRequestParamsHashes)
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedPaywallName)
+        defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedPaywallPageOptions)
         
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuides)
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuideName)
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuidePageIdentifier)
+        defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuidePageOptions)
         defaults.removeObject(forKey: ConfigCacheKeys.cachedPaywallEntryPath)
         defaults.removeObject(forKey: ConfigCacheKeys.cachedGuideEntryPath)
         defaults.removeObject(forKey: ConfigCacheKeys.installDate)
@@ -424,6 +442,22 @@ extension DYMDefaultsManager {
         }
         set {
             defaults.set(newValue, forKey: DYMConstants.UserDefaults.cachedGuideName)
+        }
+    }
+
+    var cachedGuidePageOptions: DYMConfigPageOptions? {
+        get {
+            guard let data = defaults.data(forKey: DYMConstants.UserDefaults.cachedGuidePageOptions) else {
+                return nil
+            }
+            return try? JSONDecoder().decode(DYMConfigPageOptions.self, from: data)
+        }
+        set {
+            if let value = newValue, let data = try? JSONEncoder().encode(value) {
+                defaults.set(data, forKey: DYMConstants.UserDefaults.cachedGuidePageOptions)
+            } else {
+                defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuidePageOptions)
+            }
         }
     }
     func guideConfigurations(configurations: [DYMGuideConfiguration]) -> [[String:Any]] {

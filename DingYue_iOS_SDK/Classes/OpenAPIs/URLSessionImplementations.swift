@@ -94,9 +94,28 @@ open class URLSessionRequestBuilder<T>: RequestBuilder<T> {
             originalRequest.setValue(value, forHTTPHeaderField: key)
         }
 
-        let modifiedRequest = try encoding.encode(originalRequest, with: parameters)
+        var modifiedRequest = try encoding.encode(originalRequest, with: parameters)
+        applyHmacHeaders(to: &modifiedRequest, method: method.rawValue)
 
         return modifiedRequest
+    }
+
+    private func applyHmacHeaders(to request: inout URLRequest, method: String) {
+        guard !DYMConstants.APIKeys.appId.isEmpty, !DYMConstants.APIKeys.secretKey.isEmpty else { return }
+        guard let url = request.url else { return }
+
+        let path = url.path.isEmpty ? "/" : url.path
+        let timestamp = String(Int(Date().timeIntervalSince1970))
+        let nonce = UUID().uuidString
+        let body = request.httpBody ?? Data()
+        let bodyHash = DYMConfigCrypto.sha256Hex(body)
+        let canonicalString = "\(method)\n\(path)\n\(timestamp)\n\(nonce)\n\(bodyHash)"
+        let signature = DYMConfigCrypto.hmacSHA256Hex(key: DYMConstants.APIKeys.secretKey, data: canonicalString)
+
+        request.setValue(DYMConstants.APIKeys.appId, forHTTPHeaderField: "X-App-Id")
+        request.setValue(timestamp, forHTTPHeaderField: "X-Timestamp")
+        request.setValue(nonce, forHTTPHeaderField: "X-Nonce")
+        request.setValue(signature, forHTTPHeaderField: "X-Signature")
     }
 
     @discardableResult

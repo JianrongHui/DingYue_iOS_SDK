@@ -118,11 +118,17 @@ class ApiManager {
             clearPaywallCache()
             return
         }
+        DYMDefaultsManager.shared.cachedPaywallPageOptions = variant.pageOptions
 
         let placementId = placement.placementId
         let packageVersion = package.version ?? "0"
         let identifier = "\(placementId)/\(packageVersion)"
         let packageUrl = package.cdnUrl ?? ""
+        if let variantId = variant.variantId, !variantId.isEmpty {
+            var cached = DYMDefaultsManager.shared.cachedVariationsIds
+            cached[placementId] = variantId
+            DYMDefaultsManager.shared.cachedVariationsIds = cached
+        }
 
         let subscriptions = resolveSubscriptions(
             productIds: variant.offering?.productIds,
@@ -199,11 +205,17 @@ class ApiManager {
             clearGuideCache()
             return
         }
+        DYMDefaultsManager.shared.cachedGuidePageOptions = variant.pageOptions
 
         let placementId = placement.placementId
         let packageVersion = package.version ?? "0"
         let identifier = "\(placementId)/\(packageVersion)"
         let packageUrl = package.cdnUrl ?? ""
+        if let variantId = variant.variantId, !variantId.isEmpty {
+            var cached = DYMDefaultsManager.shared.cachedVariationsIds
+            cached[placementId] = variantId
+            DYMDefaultsManager.shared.cachedVariationsIds = cached
+        }
 
         let subscriptions = resolveSubscriptions(
             productIds: variant.offering?.productIds,
@@ -359,6 +371,7 @@ class ApiManager {
         DYMDefaultsManager.shared.cachedPaywallName = nil
         DYMDefaultsManager.shared.cachedPaywallEntryPath = nil
         DYMDefaultsManager.shared.cachedProducts = nil
+        DYMDefaultsManager.shared.cachedPaywallPageOptions = nil
         DYMDefaultsManager.shared.isUseNativePaywall = false
         DYMDefaultsManager.shared.isLoadingStatus = true
         paywallIdentifier = ""
@@ -371,6 +384,7 @@ class ApiManager {
         DYMDefaultsManager.shared.cachedGuidePageIdentifier = nil
         DYMDefaultsManager.shared.cachedGuideName = nil
         DYMDefaultsManager.shared.cachedGuideEntryPath = nil
+        DYMDefaultsManager.shared.cachedGuidePageOptions = nil
         DYMDefaultsManager.shared.isUseNativeGuide = false
         DYMDefaultsManager.shared.guideLoadingStatus = true
         guidePageIdentifier = ""
