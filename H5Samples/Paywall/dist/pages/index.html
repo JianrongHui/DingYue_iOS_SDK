@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    />
+    <title>Paywall Sample</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div class="hero-top">
+          <div class="badge">Paywall Sample</div>
+          <button class="ghost" id="btn-close" type="button">Close</button>
+        </div>
+        <h1>Unlock focus mode.</h1>
+        <p class="lead">
+          This paywall listens to iostojs(base64Payload) and triggers vip_* events.
+        </p>
+        <div class="hero-actions">
+          <button class="primary" id="btn-purchase" type="button">
+            Purchase Selected
+          </button>
+          <button class="secondary" id="btn-restore" type="button">
+            Restore
+          </button>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Products</h2>
+          <div class="panel-actions">
+            <button class="ghost" id="btn-choose" type="button">Choose</button>
+          </div>
+        </div>
+        <div id="products" class="cards"></div>
+      </section>
+
+      <section class="panel grid">
+        <div>
+          <h2>Payload</h2>
+          <div id="payload-summary" class="summary"></div>
+        </div>
+        <div>
+          <h2>Bridge</h2>
+          <div class="summary">
+            <div class="row">
+              <span>vip_terms</span>
+              <button class="link" id="btn-terms" type="button">Terms</button>
+            </div>
+            <div class="row">
+              <span>vip_privacy</span>
+              <button class="link" id="btn-privacy" type="button">Privacy</button>
+            </div>
+            <div class="row">
+              <span>vip_page_options</span>
+              <button class="link" id="btn-options" type="button">
+                Disable Auto Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Payload JSON</h2>
+        <pre id="payload" class="code"></pre>
+      </section>
+
+      <footer class="footer">
+        <div>Last event: <span id="status">none</span></div>
+        <div class="hint">
+          Bridge events no-op in browser, active inside WKWebView.
+        </div>
+      </footer>
+    </div>
+    <script src="../assets/app.js"></script>
+  </body>
+</html>

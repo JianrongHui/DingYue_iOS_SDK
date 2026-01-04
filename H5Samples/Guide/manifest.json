@@ -1,0 +1,7 @@
+{
+  "manifest_version": 1,
+  "placement_type": "guide",
+  "package_version": "1.0.0",
+  "entry_path": "dist/pages/index.html",
+  "checksum": "sha256:0ead99da413fc99b6403eb7024cdd388e42eeb3dda783396e2a43de802382307"
+}
