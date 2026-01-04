@@ -92,6 +92,12 @@ import AdSupport
     private lazy var iapManager:DYMIAPFacadeManager = {
         return DYMIAPFacadeManager.shared
     }()
+    /// 自定义购买提供方（如 RevenueCat），建议在 activate 前设置。
+    public static var purchaseProvider: DYMPurchaseProvider? {
+        get { shared.purchaseProviderStorage }
+        set { shared.purchaseProviderStorage = newValue }
+    }
+    private var purchaseProviderStorage: DYMPurchaseProvider?
     ///推送地址
     @objc public static var apnsToken: Data? {
         didSet {
@@ -159,7 +165,9 @@ import AdSupport
         apiManager.completion = completion
         apiManager.startSession()
 
-        iapManager.startObserverPurchase()
+        if purchaseProviderStorage == nil {
+            iapManager.startObserverPurchase()
+        }
         
         sendAppleSearchAdsAttribution()
     }
@@ -207,6 +215,21 @@ import AdSupport
     ///通过产品ID 购买
     @objc public class func purchase(productId: String, productPrice:String? = nil, completion:@escaping DYMPurchaseCompletion) {
         DYMLogManager.logMessage("Calling now: \(#function)")
+        if let provider = shared.purchaseProviderStorage {
+            provider.purchase(productId: productId, productPrice: productPrice) { receipt, purchaseResult, product, error in
+                if let error = error {
+                    completion(nil, nil, nil, error)
+                    return
+                }
+                if Self.defaultConversionValueEnabled, let productPrice = productPrice {
+                    Self.updateCVWithTargetProductPrice(price: productPrice)
+                }
+                let baseProduct = Self.fallbackPurchasedProductInfo(productId: productId, productPrice: productPrice)
+                let mergedProduct = Self.mergePurchasedProductInfo(base: baseProduct, overrides: product)
+                completion(receipt, purchaseResult, mergedProduct, nil)
+            }
+            return
+        }
         shared.iapManager.productQuantity = 1
         shared.iapManager.buy(productId: productId) { purchase, receiptVerifyMobileResponse in
             switch purchase {
@@ -215,12 +238,10 @@ import AdSupport
                     self.updateCVWithTargetProductPrice(price: productPrice!)
                 }
                 // 已购买产品信息
-                let purchasedProduct:[String: Any] =  [
-                    "productId":purchase.productId,
-                    "productPrice":purchase.product.price.doubleValue,
-                    "currency":purchase.product.priceLocale.currencyCode ?? "",
-                    "salesRegion":purchase.product.priceLocale.regionCode ?? ""
-                ]
+                let purchasedProduct = Self.purchasedProductInfo(productId: purchase.productId,
+                                                                priceValue: purchase.product.price.doubleValue,
+                                                                currency: purchase.product.priceLocale.currencyCode ?? "",
+                                                                salesRegion: purchase.product.priceLocale.regionCode ?? "")
                 if let subs = receiptVerifyMobileResponse {
                     //更新用户属性 --- 以甄别购买来源是通过内购页还是直接调用API
                     shared.apiManager.updateUserProperties()
@@ -239,16 +260,32 @@ import AdSupport
     ///通过产品信息购买
     public class func purchase(product: SKProduct,completion:@escaping DYMPurchaseCompletion) {
         DYMLogManager.logMessage("Calling now: \(#function)")
+        if let provider = shared.purchaseProviderStorage {
+            provider.purchase(product: product) { receipt, purchaseResult, productInfo, error in
+                if let error = error {
+                    completion(nil, nil, nil, error)
+                    return
+                }
+                if Self.defaultConversionValueEnabled {
+                    Self.updateCVWithTargetProductPrice(price: product.price.stringValue)
+                }
+                let baseProduct = Self.purchasedProductInfo(productId: product.productIdentifier,
+                                                            priceValue: product.price.doubleValue,
+                                                            currency: product.priceLocale.currencyCode ?? "",
+                                                            salesRegion: product.priceLocale.regionCode ?? "")
+                let mergedProduct = Self.mergePurchasedProductInfo(base: baseProduct, overrides: productInfo)
+                completion(receipt, purchaseResult, mergedProduct, nil)
+            }
+            return
+        }
         shared.iapManager.buy(product: product) { purchase, receiptVerifyMobileResponse in
             switch purchase {
             case .succeed(let purchase):
                 // 已购买产品信息
-                let purchasedProduct:[String: Any] =  [
-                    "productId":purchase.productId,
-                    "productPrice":purchase.product.price.doubleValue,
-                    "currency":purchase.product.priceLocale.currencyCode ?? "",
-                    "salesRegion":purchase.product.priceLocale.regionCode ?? ""
-                ]
+                let purchasedProduct = Self.purchasedProductInfo(productId: purchase.productId,
+                                                                priceValue: purchase.product.price.doubleValue,
+                                                                currency: purchase.product.priceLocale.currencyCode ?? "",
+                                                                salesRegion: purchase.product.priceLocale.regionCode ?? "")
                     if let subs = receiptVerifyMobileResponse {
                         completion(purchase.receipt,subs["subscribledObject"] as? [[String : Any]],purchasedProduct,nil)
                     } else {
@@ -262,6 +299,16 @@ import AdSupport
     ///恢复购买
     @objc public class func restorePurchase(completion: DYMRestoreCompletion? = nil) {
         DYMLogManager.logMessage("Calling now: \(#function)")
+        if let provider = shared.purchaseProviderStorage {
+            provider.restore { receipt, purchaseResult, product, error in
+                if let error = error {
+                    completion?(nil, nil, nil, error)
+                    return
+                }
+                completion?(receipt, purchaseResult, product, nil)
+            }
+            return
+        }
         shared.iapManager.restrePurchase { receipt, receiptVerifyMobileResponse, error in
             if let subs = receiptVerifyMobileResponse {
                 completion?(receipt,subs["subscribledObject"] as? [[String : Any]],nil,error)
@@ -514,12 +561,51 @@ import AdSupport
     @objc public class func getProductItems() -> [Subscription]? {
         return DYMDefaultsManager.shared.cachedProducts
     }
+
+    private class func purchasedProductInfo(productId: String, priceValue: Double, currency: String, salesRegion: String) -> [String: Any] {
+        return [
+            "productId": productId,
+            "productPrice": priceValue,
+            "currency": currency,
+            "salesRegion": salesRegion,
+            "product_id": productId,
+            "product_price": priceValue,
+            "sales_region": salesRegion
+        ]
+    }
+
+    private class func fallbackPurchasedProductInfo(productId: String, productPrice: String?) -> [String: Any] {
+        let priceValue = Double(productPrice ?? "") ?? 0
+        return purchasedProductInfo(productId: productId, priceValue: priceValue, currency: "", salesRegion: "")
+    }
+
+    private class func mergePurchasedProductInfo(base: [String: Any], overrides: [String: Any]?) -> [String: Any] {
+        guard let overrides = overrides else { return base }
+        var merged = base
+        overrides.forEach { merged[$0.key] = $0.value }
+        return merged
+    }
 }
 
 // MARK: - Consume
 extension DYMobileSDK {
     @objc public class func purchaseConsumption(productId:String, count:Int,productPrice:String? = nil, completion:@escaping DYMPurchaseCompletion) {
         DYMLogManager.logMessage("Calling now: \(#function)")
+        if let provider = shared.purchaseProviderStorage {
+            provider.purchase(productId: productId, productPrice: productPrice, quantity: count) { receipt, purchaseResult, product, error in
+                if let error = error {
+                    completion(nil, nil, nil, error)
+                    return
+                }
+                if Self.defaultConversionValueEnabled, let productPrice = productPrice {
+                    Self.updateCVWithTargetProductPrice(price: productPrice)
+                }
+                let baseProduct = Self.fallbackPurchasedProductInfo(productId: productId, productPrice: productPrice)
+                let mergedProduct = Self.mergePurchasedProductInfo(base: baseProduct, overrides: product)
+                completion(receipt, purchaseResult, mergedProduct, nil)
+            }
+            return
+        }
         shared.iapManager.productQuantity = count
         shared.iapManager.buy(productId: productId) { purchase, receiptVerifyMobileResponse in
             switch purchase {
@@ -528,12 +614,10 @@ extension DYMobileSDK {
                     self.updateCVWithTargetProductPrice(price: productPrice!)
                 }
                 // 已购买产品信息
-                let purchasedProduct:[String: Any] =  [
-                    "productId":purchase.productId,
-                    "productPrice":purchase.product.price.doubleValue,
-                    "currency":purchase.product.priceLocale.currencyCode ?? "",
-                    "salesRegion":purchase.product.priceLocale.regionCode ?? ""
-                ]
+                let purchasedProduct = Self.purchasedProductInfo(productId: purchase.productId,
+                                                                priceValue: purchase.product.price.doubleValue,
+                                                                currency: purchase.product.priceLocale.currencyCode ?? "",
+                                                                salesRegion: purchase.product.priceLocale.regionCode ?? "")
 
                 if let subs = receiptVerifyMobileResponse {
                     completion(purchase.receipt,subs["subscribledObject"] as? [[String : Any]],purchasedProduct,nil)
