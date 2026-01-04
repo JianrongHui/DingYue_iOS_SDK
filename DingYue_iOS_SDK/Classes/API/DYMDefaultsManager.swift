@@ -17,6 +17,19 @@ class DYMDefaultsManager {
     static let shared = DYMDefaultsManager()
     private var defaults = UserDefaults.standard
 
+    private enum ConfigCacheKeys {
+        static let cachedPaywallEntryPath = "DYMSDK_Cached_Paywall_Entry_Path"
+        static let cachedGuideEntryPath = "DYMSDK_Cached_Guide_Entry_Path"
+        static let installDate = "DYMSDK_Install_Date"
+        static let sessionCount = "DYMSDK_Session_Count"
+    }
+
+    struct SessionInfo {
+        let isFirstLaunch: Bool
+        let sessionCount: Int
+        let installDays: Int
+    }
+
     private init() {}
     init(with defaults: UserDefaults) {
         self.defaults = defaults
@@ -99,6 +112,15 @@ class DYMDefaultsManager {
         }
         set {
             defaults.set(newValue, forKey: DYMConstants.UserDefaults.cachedPayWallPageIdentifier)
+        }
+    }
+
+    var cachedPaywallEntryPath: String? {
+        get {
+            return defaults.string(forKey: ConfigCacheKeys.cachedPaywallEntryPath)
+        }
+        set {
+            defaults.set(newValue, forKey: ConfigCacheKeys.cachedPaywallEntryPath)
         }
     }
     
@@ -316,6 +338,22 @@ class DYMDefaultsManager {
         return response
     }
 
+    func recordSessionInfo() -> SessionInfo {
+        let now = Date()
+        let installDate = (defaults.object(forKey: ConfigCacheKeys.installDate) as? Date) ?? now
+        if defaults.object(forKey: ConfigCacheKeys.installDate) == nil {
+            defaults.set(installDate, forKey: ConfigCacheKeys.installDate)
+        }
+
+        var sessionCount = defaults.integer(forKey: ConfigCacheKeys.sessionCount)
+        sessionCount += 1
+        defaults.set(sessionCount, forKey: ConfigCacheKeys.sessionCount)
+
+        let installDays = Calendar.current.dateComponents([.day], from: installDate, to: now).day ?? 0
+        let isFirstLaunch = sessionCount == 1
+        return SessionInfo(isFirstLaunch: isFirstLaunch, sessionCount: sessionCount, installDays: installDays)
+    }
+
     func clean() {
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedVariationsIds)
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedPaywalls)
@@ -333,6 +371,10 @@ class DYMDefaultsManager {
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuides)
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuideName)
         defaults.removeObject(forKey: DYMConstants.UserDefaults.cachedGuidePageIdentifier)
+        defaults.removeObject(forKey: ConfigCacheKeys.cachedPaywallEntryPath)
+        defaults.removeObject(forKey: ConfigCacheKeys.cachedGuideEntryPath)
+        defaults.removeObject(forKey: ConfigCacheKeys.installDate)
+        defaults.removeObject(forKey: ConfigCacheKeys.sessionCount)
     }
 }
 
@@ -361,6 +403,15 @@ extension DYMDefaultsManager {
         }
         set {
             defaults.set(newValue, forKey: DYMConstants.UserDefaults.cachedGuidePageIdentifier)
+        }
+    }
+
+    var cachedGuideEntryPath: String? {
+        get {
+            return defaults.string(forKey: ConfigCacheKeys.cachedGuideEntryPath)
+        }
+        set {
+            defaults.set(newValue, forKey: ConfigCacheKeys.cachedGuideEntryPath)
         }
     }
     
