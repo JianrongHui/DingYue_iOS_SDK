@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    />
+    <title>Guide Sample</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="top">
+        <div class="mark">Guide Sample</div>
+        <button class="ghost" id="btn-close" type="button">Skip</button>
+      </nav>
+
+      <main class="main">
+        <section class="story">
+          <h1>First steps, built for flow.</h1>
+          <p class="lead">
+            This guide reacts to iostojs(base64Payload) and triggers guide_* events.
+          </p>
+          <div id="steps" class="steps"></div>
+          <div class="controls">
+            <button class="primary" id="btn-continue" type="button">
+              Continue
+            </button>
+            <button class="secondary" id="btn-purchase" type="button">
+              Unlock Premium
+            </button>
+            <button class="ghost" id="btn-restore" type="button">
+              Restore
+            </button>
+          </div>
+        </section>
+
+        <aside class="side">
+          <div class="panel">
+            <h2>Payload</h2>
+            <div id="payload-summary" class="summary"></div>
+          </div>
+          <div class="panel">
+            <h2>Bridge</h2>
+            <div class="summary">
+              <div class="row">
+                <span>guide_terms</span>
+                <button class="link" id="btn-terms" type="button">
+                  Terms
+                </button>
+              </div>
+              <div class="row">
+                <span>guide_privacy</span>
+                <button class="link" id="btn-privacy" type="button">
+                  Privacy
+                </button>
+              </div>
+              <div class="row">
+                <span>guide_page_options</span>
+                <button class="link" id="btn-options" type="button">
+                  Disable Auto Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <section class="panel">
+        <h2>Payload JSON</h2>
+        <pre id="payload" class="code"></pre>
+      </section>
+
+      <footer class="footer">
+        <div>Last event: <span id="status">none</span></div>
+        <div class="hint">
+          Bridge events no-op in browser, active inside WKWebView.
+        </div>
+      </footer>
+    </div>
+    <script src="../assets/app.js"></script>
+  </body>
+</html>

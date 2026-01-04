@@ -1,0 +1,7 @@
+{
+  "manifest_version": 1,
+  "placement_type": "paywall",
+  "package_version": "1.0.0",
+  "entry_path": "dist/pages/index.html",
+  "checksum": "sha256:43a6785455aafb96e04968b7525adc22b4054ecac19bf2c6e3b96392ef7627c4"
+}
