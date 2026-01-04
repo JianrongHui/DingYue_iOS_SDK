@@ -17,6 +17,52 @@ var purchasedProducts:[[String:Any]] = [] {
 }
 let HasDisplayedGuide = "HasDisplayedGuide"
 
+enum ExampleSDKDemoPayload {
+    static func resolvedProducts() -> [Subscription] {
+        if let products = DYMobileSDK.getProductItems(), !products.isEmpty {
+            return products
+        }
+        return demoProducts()
+    }
+
+    static func extras(with purchasedProducts: [[String: Any]]) -> [String: Any] {
+        [
+            "phone_number": "1999999999",
+            "phone_country": "国家",
+            "purchased_products": snakeCasedPurchasedProducts(purchasedProducts),
+            "main_color": "white"
+        ]
+    }
+
+    private static func demoProducts() -> [Subscription] {
+        let defaultProuct1 = Subscription(type: "SUBSCRIPTION", name: "Week", platformProductId: "testWeek", price: "7.99", currencyCode: "USD", countryCode: "US")
+        let defaultProuct2 = Subscription(type: "SUBSCRIPTION", name: "Year", platformProductId: "testYear", appleSubscriptionGroupId: nil, description: "default product item", period: "Year", price: "49.99", currencyCode: "USD", countryCode: "US", priceTier: nil, gracePeriod: nil, icon: nil, renewPriceChange: nil)
+        return [defaultProuct1, defaultProuct2]
+    }
+
+    private static func snakeCasedPurchasedProducts(_ products: [[String: Any]]) -> [[String: Any]] {
+        products.map { product in
+            var snakeProduct: [String: Any] = [:]
+            if let value = product["platformProductId"] {
+                snakeProduct["platform_product_id"] = value
+            }
+            if let value = product["originalTransactionId"] {
+                snakeProduct["original_transaction_id"] = value
+            }
+            if let value = product["expiresAt"] {
+                snakeProduct["expires_at"] = value
+            }
+            if let value = product["appleSubscriptionGroupId"] {
+                snakeProduct["apple_subscription_group_id"] = value
+            }
+            if let value = product["isRestore"] {
+                snakeProduct["is_restore"] = value
+            }
+            return snakeProduct
+        }
+    }
+}
+
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
@@ -109,18 +155,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         self.window?.makeKeyAndVisible()
         DYMConfiguration.shared.guidePageConfig.indicatorColor = .orange
 
-        //显示引导页-可以传符合要求的内购项信息对象
-        let defaultProuct1 = Subscription(type: "SUBSCRIPTION", name: "Week", platformProductId: "testWeek", price: "7.99", currencyCode: "USD", countryCode: "US")
-        let defaultProuct2 = Subscription(type: "SUBSCRIPTION", name: "Year", platformProductId: "testYear", appleSubscriptionGroupId: nil, description: "default product item", period: "Year", price: "49.99", currencyCode: "USD", countryCode: "US", priceTier: nil, gracePeriod: nil, icon: nil, renewPriceChange: nil)
-        //显示引导页
-        
-        let extra:[String:Any] = [
-            "phoneNumber": "1999999999",
-            "phoneCountry" : "国家",
-            "purchasedProducts" : purchasedProducts,
-            "mainColor": "white"
-        ]
-        DYMobileSDK.showVisualGuide(products: [defaultProuct1,defaultProuct2],rootDelegate:self,extras: extra) { receipt, purchaseResult,purchasedProduct, error in
+        let products = ExampleSDKDemoPayload.resolvedProducts()
+        let extra = ExampleSDKDemoPayload.extras(with: purchasedProducts)
+        DYMobileSDK.showVisualGuide(products: products, rootDelegate: self, extras: extra) { receipt, purchaseResult,purchasedProduct, error in
             
             if let res = purchaseResult,res.count > 0 {
                 let expireTime = self.calculateNewExpiryTime(from: res)
@@ -264,5 +301,4 @@ extension AppDelegate {
        return timestampInMilliseconds
    }
 }
-
 
