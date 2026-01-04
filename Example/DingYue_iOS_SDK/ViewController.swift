@@ -50,19 +50,10 @@ class ViewController: UIViewController {
     
     
     @objc func goPurchaseSubscriptionAction(){
-        //显示内购页-可以传复合要求的内购项信息对象
-        let defaultProuct1 = Subscription(type: "SUBSCRIPTION", name: "Week", platformProductId: "testWeek", price: "7.99", currencyCode: "USD", countryCode: "US")
-        let defaultProuct2 = Subscription(type: "SUBSCRIPTION", name: "Year", platformProductId: "testYear", appleSubscriptionGroupId: nil, description: "default product item", period: "Year", price: "49.99", currencyCode: "USD", countryCode: "US", priceTier: nil, gracePeriod: nil, icon: nil, renewPriceChange: nil)
-        //显示内购页
-        
-        let extra:[String:Any] = [
-            "phoneNumber": "1999999999",
-            "phoneCountry" : "国家",
-            "purchasedProducts" : purchasedProducts,
-            "mainColor": "white"
-        ]
-        
-        DYMobileSDK.showVisualPaywall(products: [defaultProuct1,defaultProuct2], rootController: self, extras: extra) { receipt, purchasedResult,purchasedProduct, error in
+        let products = ExampleSDKDemoPayload.resolvedProducts()
+        let extra = ExampleSDKDemoPayload.extras(with: purchasedProducts)
+
+        DYMobileSDK.showVisualPaywall(products: products, rootController: self, extras: extra) { receipt, purchasedResult,purchasedProduct, error in
             if error == nil {
                //购买成功
                 print("返回结果：")
@@ -100,20 +91,13 @@ class ViewController: UIViewController {
     }
     
     @objc func gotoWebGuide() {
-        //显示内购页-可以传复合要求的内购项信息对象
-        let defaultProuct1 = Subscription(type: "SUBSCRIPTION", name: "Week", platformProductId: "testWeek", price: "7.99", currencyCode: "USD", countryCode: "US")
-        let defaultProuct2 = Subscription(type: "SUBSCRIPTION", name: "Year", platformProductId: "testYear", appleSubscriptionGroupId: nil, description: "default product item", period: "Year", price: "49.99", currencyCode: "USD", countryCode: "US", priceTier: nil, gracePeriod: nil, icon: nil, renewPriceChange: nil)
-        //显示内购页
-        
-        let extra:[String:Any] = [
-            "phoneNumber": "1999999999",
-            "phoneCountry" : "国家",
-            "purchasedProducts" : purchasedProducts,
-            "mainColor": "white"
-        ]
+        let products = ExampleSDKDemoPayload.resolvedProducts()
+        let extra = ExampleSDKDemoPayload.extras(with: purchasedProducts)
 
-        
-        DYMobileSDK.showVisualGuide(products: [defaultProuct1,defaultProuct2], rootDelegate: UIApplication.shared.delegate as! DYMWindowManaging,extras: extra) { receipt, purchaseResult,purchasedProduct ,error in
+        guard let windowManager = UIApplication.shared.delegate as? DYMWindowManaging else {
+            return
+        }
+        DYMobileSDK.showVisualGuide(products: products, rootDelegate: windowManager, extras: extra) { receipt, purchaseResult,purchasedProduct ,error in
             
         }
     }
@@ -122,7 +106,7 @@ class ViewController: UIViewController {
     
     @objc func setCustomerProperties() {
         let properties: [String: Any] = [
-            "customProperties": [
+            "custom_properties": [
                 [
                     "key": "test0",
                     "value": "123131313"
