@@ -1,0 +1,617 @@
+openapi: 3.0.3
+info:
+  title: DingYue 私有化 SDK API
+  version: 1.0.0
+servers:
+  - url: https://api.yourdomain.com
+
+paths:
+  /v1/sdk/config:
+    post:
+      summary: 获取 SDK 配置
+      security:
+        - HmacAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+
+  /v1/sdk/events:
+    post:
+      summary: 上报 SDK 事件
+      security:
+        - HmacAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventsRequest'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/apps:
+    get:
+      summary: 获取应用列表
+      security:
+        - AdminAuth: []
+      responses:
+        '200':
+          description: 成功
+    post:
+      summary: 创建应用
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppCreate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/apps/{app_id}:
+    patch:
+      summary: 更新应用
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppUpdate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/placements:
+    get:
+      summary: 获取 placement 列表
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: app_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+    post:
+      summary: 创建 placement
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlacementCreate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/placements/{placement_id}:
+    patch:
+      summary: 更新 placement
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: placement_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlacementUpdate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/packages/presign:
+    post:
+      summary: 获取上传签名 URL
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackagePresign'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/packages/commit:
+    post:
+      summary: 提交上传包并解析
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageCommit'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/variants:
+    get:
+      summary: 获取 variant 列表
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: app_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: placement_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+    post:
+      summary: 创建 variant
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariantCreate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/variants/{variant_id}:
+    patch:
+      summary: 更新 variant
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: variant_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariantUpdate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/rulesets:
+    get:
+      summary: 获取 ruleset 列表
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: app_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: placement_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+    post:
+      summary: 创建 ruleset
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleSetCreate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/rulesets/{rule_set_id}:
+    patch:
+      summary: 更新 ruleset
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: rule_set_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleSetUpdate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/experiments:
+    get:
+      summary: 获取实验列表
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: app_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: placement_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+    post:
+      summary: 创建实验
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentCreate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/experiments/{experiment_id}:
+    patch:
+      summary: 更新实验
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: experiment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentUpdate'
+      responses:
+        '200':
+          description: 成功
+
+  /v1/admin/events:
+    get:
+      summary: 查询事件
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: app_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: event_name
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: placement_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+
+components:
+  securitySchemes:
+    HmacAuth:
+      type: apiKey
+      in: header
+      name: X-Signature
+    AdminAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
+
+  schemas:
+    ConfigRequest:
+      type: object
+      properties:
+        sdk:
+          type: object
+          properties:
+            version: { type: string }
+            build: { type: integer }
+        app:
+          type: object
+          properties:
+            bundle_id: { type: string }
+            version: { type: string }
+            build: { type: string }
+        device:
+          type: object
+          properties:
+            os_version: { type: string }
+            model: { type: string }
+            locale: { type: string }
+            timezone: { type: string }
+            ip_country: { type: string }
+        user:
+          type: object
+          properties:
+            rc_app_user_id: { type: string }
+            app_user_id: { type: string }
+            device_id: { type: string }
+        session:
+          type: object
+          properties:
+            is_first_launch: { type: boolean }
+            session_count: { type: integer }
+            install_days: { type: integer }
+        attributes:
+          type: object
+          properties:
+            channel: { type: string }
+            custom: { type: object }
+
+    ConfigResponse:
+      type: object
+      properties:
+        ttl_seconds: { type: integer }
+        placements:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlacementConfig'
+        server_time: { type: string }
+
+    PlacementConfig:
+      type: object
+      properties:
+        placement_id: { type: string }
+        type: { type: string }
+        enabled: { type: boolean }
+        variant:
+          $ref: '#/components/schemas/VariantConfig'
+        rule_hit:
+          type: object
+          properties:
+            rule_set_id: { type: string }
+            experiment_id: { type: string }
+
+    VariantConfig:
+      type: object
+      properties:
+        variant_id: { type: string }
+        package:
+          type: object
+          properties:
+            version: { type: string }
+            cdn_url: { type: string }
+            checksum: { type: string }
+            entry_path: { type: string }
+            size_bytes: { type: integer }
+        offering:
+          type: object
+          properties:
+            offering_id: { type: string }
+            product_ids:
+              type: array
+              items: { type: string }
+            fallback_to_current_offering: { type: boolean }
+        page_options:
+          type: object
+          properties:
+            auto_close_on_success: { type: boolean }
+            auto_close_on_restore: { type: boolean }
+
+    EventsRequest:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+
+    Event:
+      type: object
+      properties:
+        event_id: { type: string }
+        event_name: { type: string }
+        timestamp: { type: string }
+        app_id: { type: string }
+        placement_id: { type: string }
+        variant_id: { type: string }
+        placement_version: { type: string }
+        sdk_version: { type: string }
+        app_version: { type: string }
+        rc_app_user_id: { type: string }
+        app_user_id: { type: string }
+        device_id: { type: string }
+        session_id: { type: string }
+        locale: { type: string }
+        country: { type: string }
+        network_type: { type: string }
+        offering_id: { type: string }
+        product_id: { type: string }
+        product_ids:
+          type: array
+          items: { type: string }
+        price: { type: number }
+        currency: { type: string }
+        error_code: { type: string }
+        error_message: { type: string }
+        http_status: { type: integer }
+        customer_info_summary: { type: object }
+        extra: { type: object }
+
+    AppCreate:
+      type: object
+      properties:
+        name: { type: string }
+        env: { type: string }
+      required: [name, env]
+
+    AppUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        status: { type: string }
+
+    PlacementCreate:
+      type: object
+      properties:
+        app_id: { type: string }
+        placement_id: { type: string }
+        type: { type: string }
+        enabled: { type: boolean }
+      required: [app_id, placement_id, type]
+
+    PlacementUpdate:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        default_variant_id: { type: string }
+
+    PackagePresign:
+      type: object
+      properties:
+        app_id: { type: string }
+        placement_id: { type: string }
+        filename: { type: string }
+      required: [app_id, placement_id, filename]
+
+    PackageCommit:
+      type: object
+      properties:
+        app_id: { type: string }
+        package_id: { type: string }
+        storage_key: { type: string }
+      required: [app_id, package_id, storage_key]
+
+    VariantCreate:
+      type: object
+      properties:
+        app_id: { type: string }
+        placement_id: { type: string }
+        package_id: { type: string }
+        offering_id: { type: string }
+        product_ids:
+          type: array
+          items: { type: string }
+        priority: { type: integer }
+        enabled: { type: boolean }
+        page_options: { type: object }
+      required: [app_id, placement_id, package_id, priority]
+
+    VariantUpdate:
+      type: object
+      properties:
+        offering_id: { type: string }
+        product_ids:
+          type: array
+          items: { type: string }
+        priority: { type: integer }
+        enabled: { type: boolean }
+        page_options: { type: object }
+
+    RuleSetCreate:
+      type: object
+      properties:
+        app_id: { type: string }
+        placement_id: { type: string }
+        priority: { type: integer }
+        condition: { type: object }
+        variant_id: { type: string }
+        experiment_id: { type: string }
+      required: [app_id, placement_id, priority, condition, variant_id]
+
+    RuleSetUpdate:
+      type: object
+      properties:
+        priority: { type: integer }
+        condition: { type: object }
+        variant_id: { type: string }
+        experiment_id: { type: string }
+
+    ExperimentCreate:
+      type: object
+      properties:
+        app_id: { type: string }
+        placement_id: { type: string }
+        status: { type: string }
+        traffic: { type: integer }
+        seed: { type: string }
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              variant_id: { type: string }
+              weight: { type: integer }
+      required: [app_id, placement_id, status, traffic, seed, variants]
+
+    ExperimentUpdate:
+      type: object
+      properties:
+        status: { type: string }
+        traffic: { type: integer }
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              variant_id: { type: string }
+              weight: { type: integer }
