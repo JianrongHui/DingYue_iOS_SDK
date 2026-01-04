@@ -126,7 +126,16 @@ public typealias Parameters = [String: Any]
     static var appVersion: String? {
         return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
     }
-    static var pallwallPath:String?{
+
+    static var paywallRootPath: String? {
+        return createPaywallDir()
+    }
+
+    static var pallwallPath: String? {
+        if let entryPath = DYMDefaultsManager.shared.cachedPaywallEntryPath,
+           FileManager.default.fileExists(atPath: entryPath) {
+            return URL(fileURLWithPath: entryPath).deletingLastPathComponent().path
+        }
         return createPaywallDir()
     }
 
@@ -159,7 +168,15 @@ public typealias Parameters = [String: Any]
         }
     }
     
+    static var guideRootPath: String? {
+        return createGuideDirPath()
+    }
+
     static var guidePath: String? {
+        if let entryPath = DYMDefaultsManager.shared.cachedGuideEntryPath,
+           FileManager.default.fileExists(atPath: entryPath) {
+            return URL(fileURLWithPath: entryPath).deletingLastPathComponent().path
+        }
         return createGuideDirPath()
     }
     class func createGuideDirPath() ->String?{
