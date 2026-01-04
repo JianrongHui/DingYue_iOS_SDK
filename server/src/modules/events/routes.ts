@@ -1,5 +1,6 @@
 import { Express, Request, Response } from 'express';
 
+import { createAnalyticsForwarderFromEnv, type SDKEvent } from '../../lib/analytics';
 import { getDbPool } from '../../lib/db';
 
 type JsonObject = Record<string, unknown>;
@@ -13,6 +14,7 @@ type StoredEvent = {
 };
 
 const SDK_EVENTS_PATH = '/v1/sdk/events';
+const analyticsForwarder = createAnalyticsForwarderFromEnv();
 
 export function registerEventsRoutes(app: Express): void {
   app.post(SDK_EVENTS_PATH, handleEvents);
@@ -50,8 +52,16 @@ async function handleEvents(req: Request, res: Response): Promise<void> {
   try {
     const pool = getDbPool();
     const query = buildInsertQuery(deduped);
-    const result = await pool.query(query.text, query.values);
+    const result = await pool.query<{ id: string }>(query.text, query.values);
     const inserted = result.rowCount ?? 0;
+    const insertedIds = new Set(result.rows.map((row) => row.id));
+    const insertedEvents = deduped.filter((event) => insertedIds.has(event.id));
+
+    if (insertedEvents.length > 0) {
+      void forwardAnalyticsEvents(insertedEvents).catch((error) => {
+        console.warn('Failed to forward analytics events', error);
+      });
+    }
 
     res.status(200).json({ ok: true, inserted });
   } catch (error) {
@@ -132,7 +142,7 @@ function buildInsertQuery(events: StoredEvent[]): { text: string; values: unknow
   return {
     text: `insert into events (id, app_id, event_name, payload, created_at) values ${placeholders.join(
       ', '
-    )} on conflict (id) do nothing`,
+    )} on conflict (id) do nothing returning id`,
     values
   };
 }
@@ -159,4 +169,10 @@ function sendValidationError(res: Response, message: string): void {
     error: 'invalid_request',
     message
   });
+}
+
+async function forwardAnalyticsEvents(events: StoredEvent[]): Promise<void> {
+  await Promise.all(
+    events.map((event) => analyticsForwarder.forward(event.payload as SDKEvent))
+  );
 }
