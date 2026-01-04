@@ -2,6 +2,9 @@ import express, { Express, Request, Response } from 'express';
 
 import { errorHandler } from './middleware/error_handler';
 import { requestIdMiddleware } from './middleware/request_id';
+import { registerConfigRoutes } from './modules/config';
+import { registerEventsRoutes } from './modules/events';
+import { registerPackagesModule } from './modules/packages';
 
 export function createApp(): Express {
   const app = express();
@@ -24,6 +27,8 @@ export function createApp(): Express {
   return app;
 }
 
-function registerModules(_app: Express): void {
-  // Register business routes here.
+function registerModules(app: Express): void {
+  registerConfigRoutes(app);
+  registerEventsRoutes(app);
+  registerPackagesModule(app);
 }
