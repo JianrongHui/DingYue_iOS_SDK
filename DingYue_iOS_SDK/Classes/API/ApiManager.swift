@@ -383,7 +383,7 @@ class ApiManager {
         case .entryNotFound, .entryPathInvalid:
             DYMEventManager.shared.track(event: "H5_ENTRY_NOT_FOUND", extra: placementType)
         case .checksumMismatch:
-            DYMEventManager.shared.track(event: "H5_CHECKSUM_MISMATCH", extra: placementType)
+            DYMEventManager.shared.track(event: "RESOURCE_CHECKSUM_FAIL", extra: placementType)
         default:
             break
         }
