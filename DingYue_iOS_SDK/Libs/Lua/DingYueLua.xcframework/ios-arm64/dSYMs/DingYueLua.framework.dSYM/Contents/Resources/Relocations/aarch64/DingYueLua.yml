@@ -1,6 +1,6 @@
 ---
 triple:          'arm64-apple-darwin'
-binary-path:     '/Users/wangyong/Library/Developer/Xcode/DerivedData/DingYueLua-dwleluolxrtvuodahxaybpujnymr/Build/Products/Release-iphoneos/DingYueLua.framework/DingYueLua'
+binary-path:     'DerivedData/Build/Products/Release-iphoneos/DingYueLua.framework/DingYueLua'
 relocations:
   - { offsetInCU: 0x34, offset: 0x7035D, size: 0x8, addend: 0x0, symName: _DingYueLuaVersionString, symObjAddr: 0x10, symBinAddr: 0x44460, symSize: 0x0 }
   - { offsetInCU: 0x69, offset: 0x70392, size: 0x8, addend: 0x0, symName: _DingYueLuaVersionNumber, symObjAddr: 0x40, symBinAddr: 0x44490, symSize: 0x0 }
