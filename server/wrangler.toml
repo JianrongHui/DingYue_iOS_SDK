@@ -1,0 +1,23 @@
+name = "dingyue-sdk-api"
+main = "src/worker.ts"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dingyue-sdk"
+database_id = "<fill-me>"
+migrations_dir = "src/db/migrations-d1"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "dingyue-packages"
+
+[[kv_namespaces]]
+binding = "NONCE_CACHE"
+id = "<fill-me>"
+
+[vars]
+# Non-sensitive config here.
+# Sensitive config should be stored as secrets:
+# wrangler secret put GA4_API_SECRET
+# wrangler secret put FIREBASE_API_SECRET

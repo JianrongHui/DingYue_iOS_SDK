@@ -1,6 +1,5 @@
-import type { Pool } from 'pg';
-
 import type { FactEvent } from './types';
+import type { D1Adapter } from '../db';
 
 const FACT_EVENT_COLUMNS = [
   'id',
@@ -31,27 +30,30 @@ const FACT_EVENT_COLUMNS = [
   'etl_processed_at'
 ] as const;
 
-export async function loadFactEvents(pool: Pool, events: FactEvent[]): Promise<number> {
+const SQLITE_MAX_VARIABLES = 999;
+const MAX_ROWS_PER_INSERT = Math.max(
+  1,
+  Math.floor(SQLITE_MAX_VARIABLES / FACT_EVENT_COLUMNS.length)
+);
+
+export async function loadFactEvents(
+  db: D1Adapter,
+  events: FactEvent[]
+): Promise<number> {
   if (events.length === 0) {
     return 0;
   }
 
-  const values: unknown[] = [];
-  const rows = events.map((event, index) => {
-    const offset = index * FACT_EVENT_COLUMNS.length;
-    values.push(...serializeEvent(event));
-    const placeholders = FACT_EVENT_COLUMNS.map(
-      (_column, columnIndex) => `$${offset + columnIndex + 1}`
-    );
-    return `(${placeholders.join(', ')})`;
-  });
+  let inserted = 0;
 
-  const query = `insert into fact_events (${FACT_EVENT_COLUMNS.join(
-    ', '
-  )}) values ${rows.join(', ')} on conflict (event_id) do nothing returning event_id`;
+  for (let i = 0; i < events.length; i += MAX_ROWS_PER_INSERT) {
+    const chunk = events.slice(i, i + MAX_ROWS_PER_INSERT);
+    const query = buildInsertQuery(chunk);
+    const result = await db.execute(query.sql, query.params);
+    inserted += result.changes;
+  }
 
-  const result = await pool.query(query, values);
-  return result.rowCount ?? 0;
+  return inserted;
 }
 
 function serializeEvent(event: FactEvent): unknown[] {
@@ -83,4 +85,22 @@ function serializeEvent(event: FactEvent): unknown[] {
     event.payload_json,
     event.etl_processed_at
   ];
+}
+
+function buildInsertQuery(
+  events: FactEvent[]
+): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const rowPlaceholders = `(${FACT_EVENT_COLUMNS.map(() => '?').join(', ')})`;
+  const rows = events.map((event) => {
+    params.push(...serializeEvent(event));
+    return rowPlaceholders;
+  });
+
+  return {
+    sql: `insert into fact_events (${FACT_EVENT_COLUMNS.join(
+      ', '
+    )}) values ${rows.join(', ')} on conflict (event_id) do nothing`,
+    params
+  };
 }

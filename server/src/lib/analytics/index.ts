@@ -1,10 +1,9 @@
-import { Pool } from 'pg';
-
 import { FirebaseForwarder } from './firebase';
 import { GA4Forwarder } from './ga4';
 import { getSinksForApp } from './cache';
 import type { AnalyticsSink } from '../../modules/analytics-sinks/types';
 import type { AnalyticsForwarder, SDKEvent } from './types';
+import type { D1Adapter } from '../db';
 
 export { FirebaseForwarder } from './firebase';
 export { GA4Forwarder } from './ga4';
@@ -32,7 +31,7 @@ export function createAnalyticsForwarderFromEnv(): AnalyticsForwarder {
 }
 
 export async function createAnalyticsForwarder(
-  db: Pool,
+  db: D1Adapter,
   appId: string
 ): Promise<AnalyticsForwarder> {
   const { sinks, hasAny } = await getSinksForApp(db, appId);

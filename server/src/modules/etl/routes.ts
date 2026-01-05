@@ -1,6 +1,6 @@
 import { Express, Request, Response } from 'express';
 
-import { getDbPool } from '../../lib/db';
+import { getDb } from '../../lib/db';
 import { getFactEventsEtlStatus, runFactEventsEtl } from '../../lib/etl';
 
 type JsonObject = Record<string, unknown>;
@@ -37,8 +37,8 @@ async function handleEtlRun(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const pool = getDbPool();
-    const result = await runFactEventsEtl(pool, {
+    const db = getDb();
+    const result = await runFactEventsEtl(db, {
       batchSize,
       maxBatches
     });
@@ -55,8 +55,8 @@ async function handleEtlRun(req: Request, res: Response): Promise<void> {
 
 async function handleEtlStatus(_req: Request, res: Response): Promise<void> {
   try {
-    const pool = getDbPool();
-    const status = await getFactEventsEtlStatus(pool);
+    const db = getDb();
+    const status = await getFactEventsEtlStatus(db);
 
     res.status(200).json({
       ok: true,

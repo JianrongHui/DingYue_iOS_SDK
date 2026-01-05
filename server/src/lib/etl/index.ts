@@ -1,25 +1,24 @@
-import type { Pool } from 'pg';
-
 import { extractNewEvents, getLastProcessedCursor } from './extractor';
 import { loadFactEvents } from './loader';
 import { transformEvent } from './transformer';
 import type { EtlCursor, EtlRunOptions, EtlRunResult, EtlStatus, RawEvent } from './types';
+import type { D1Adapter } from '../db';
 
 const DEFAULT_BATCH_SIZE = 1000;
 
 export async function runFactEventsEtl(
-  pool: Pool,
+  db: D1Adapter,
   options: EtlRunOptions = {}
 ): Promise<EtlRunResult> {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const maxBatches = options.maxBatches ?? Number.POSITIVE_INFINITY;
-  let cursor = await getLastProcessedCursor(pool);
+  let cursor = await getLastProcessedCursor(db);
   let extracted = 0;
   let inserted = 0;
   let batches = 0;
 
   while (batches < maxBatches) {
-    const events = await extractNewEvents(pool, cursor, batchSize);
+    const events = await extractNewEvents(db, cursor, batchSize);
 
     if (events.length === 0) {
       break;
@@ -27,7 +26,7 @@ export async function runFactEventsEtl(
 
     const processedAt = new Date().toISOString();
     const factEvents = events.map((event) => transformEvent(event, processedAt));
-    const insertedCount = await loadFactEvents(pool, factEvents);
+    const insertedCount = await loadFactEvents(db, factEvents);
 
     extracted += events.length;
     inserted += insertedCount;
@@ -47,11 +46,11 @@ export async function runFactEventsEtl(
   };
 }
 
-export async function getFactEventsEtlStatus(pool: Pool): Promise<EtlStatus> {
+export async function getFactEventsEtlStatus(db: D1Adapter): Promise<EtlStatus> {
   const [cursor, factCount, sourceCount] = await Promise.all([
-    getLastProcessedCursor(pool),
-    countTable(pool, 'fact_events'),
-    countTable(pool, 'events')
+    getLastProcessedCursor(db),
+    countTable(db, 'fact_events'),
+    countTable(db, 'events')
   ]);
 
   return {
@@ -89,7 +88,10 @@ function normalizeTimestamp(value: string | Date): string | undefined {
   return parsed.toISOString();
 }
 
-async function countTable(pool: Pool, table: 'fact_events' | 'events'): Promise<number> {
+async function countTable(
+  pool: D1Adapter,
+  table: 'fact_events' | 'events'
+): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `select count(*) as count from ${table}`
   );

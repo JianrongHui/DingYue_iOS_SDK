@@ -1,7 +1,7 @@
 import { Express, Request, Response } from 'express';
 
 import { createAnalyticsForwarder, type SDKEvent } from '../../lib/analytics';
-import { getDbPool } from '../../lib/db';
+import { getDb } from '../../lib/db';
 
 type JsonObject = Record<string, unknown>;
 
@@ -10,7 +10,7 @@ type StoredEvent = {
   app_id: string;
   event_name: string;
   payload: JsonObject;
-  created_at: Date;
+  created_at: string;
 };
 
 const SDK_EVENTS_PATH = '/v1/sdk/events';
@@ -48,9 +48,9 @@ async function handleEvents(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const pool = getDbPool();
+    const db = getDb();
     const query = buildInsertQuery(deduped);
-    const result = await pool.query<{ id: string }>(query.text, query.values);
+    const result = await db.query<{ id: string }>(query.sql, query.params);
     const inserted = result.rowCount ?? 0;
     const insertedIds = new Set(result.rows.map((row) => row.id));
     const insertedEvents = deduped.filter((event) => insertedIds.has(event.id));
@@ -99,9 +99,9 @@ function parseEvents(rawEvents: unknown[]): { events: StoredEvent[]; error?: str
       return { events: [], error: `events[${index}].app_id is required` };
     }
 
-    const createdAt = new Date(timestamp);
+  const createdAt = new Date(timestamp);
 
-    if (Number.isNaN(createdAt.getTime())) {
+  if (Number.isNaN(createdAt.getTime())) {
       return { events: [], error: `events[${index}].timestamp is invalid` };
     }
 
@@ -110,7 +110,7 @@ function parseEvents(rawEvents: unknown[]): { events: StoredEvent[]; error?: str
       app_id: appId,
       event_name: eventName,
       payload: rawEvent,
-      created_at: createdAt
+      created_at: createdAt.toISOString()
     });
   }
 
@@ -129,19 +129,26 @@ function dedupeEvents(events: StoredEvent[]): StoredEvent[] {
   return Array.from(unique.values());
 }
 
-function buildInsertQuery(events: StoredEvent[]): { text: string; values: unknown[] } {
-  const values: unknown[] = [];
-  const placeholders = events.map((event, index) => {
-    const offset = index * 5;
-    values.push(event.id, event.app_id, event.event_name, event.payload, event.created_at);
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`;
+function buildInsertQuery(
+  events: StoredEvent[]
+): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const placeholders = events.map((event) => {
+    params.push(
+      event.id,
+      event.app_id,
+      event.event_name,
+      serializePayload(event.payload),
+      event.created_at
+    );
+    return '(?, ?, ?, ?, ?)';
   });
 
   return {
-    text: `insert into events (id, app_id, event_name, payload, created_at) values ${placeholders.join(
+    sql: `insert into events (id, app_id, event_name, payload, created_at) values ${placeholders.join(
       ', '
     )} on conflict (id) do nothing returning id`,
-    values
+    params
   };
 }
 
@@ -170,7 +177,7 @@ function sendValidationError(res: Response, message: string): void {
 }
 
 async function forwardAnalyticsEvents(events: StoredEvent[]): Promise<void> {
-  const pool = getDbPool();
+  const db = getDb();
   const grouped = new Map<string, StoredEvent[]>();
 
   for (const event of events) {
@@ -184,10 +191,18 @@ async function forwardAnalyticsEvents(events: StoredEvent[]): Promise<void> {
 
   await Promise.all(
     Array.from(grouped.entries()).map(async ([appId, appEvents]) => {
-      const forwarder = await createAnalyticsForwarder(pool, appId);
+      const forwarder = await createAnalyticsForwarder(db, appId);
       await Promise.all(
         appEvents.map((event) => forwarder.forward(event.payload as SDKEvent))
       );
     })
   );
+}
+
+function serializePayload(payload: JsonObject): string {
+  try {
+    return JSON.stringify(payload);
+  } catch (error) {
+    return '{}';
+  }
 }

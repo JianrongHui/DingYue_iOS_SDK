@@ -1,4 +1,3 @@
-import { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 
 import {
@@ -8,6 +7,7 @@ import {
   type AnalyticsSinkType,
   normalizeAnalyticsSinkRow
 } from './types';
+import type { D1Adapter } from '../../lib/db';
 
 export type CreateAnalyticsSinkInput = {
   app_id: string;
@@ -27,15 +27,15 @@ const SINK_COLUMNS =
   'id, app_id, type, config, enabled, created_at, updated_at';
 
 export async function listAnalyticsSinks(
-  pool: Pool,
+  db: D1Adapter,
   appId?: string
 ): Promise<AnalyticsSink[]> {
   const result = appId
-    ? await pool.query<AnalyticsSinkRow>(
-        `select ${SINK_COLUMNS} from analytics_sinks where app_id = $1 order by created_at desc`,
+    ? await db.query<AnalyticsSinkRow>(
+        `select ${SINK_COLUMNS} from analytics_sinks where app_id = ? order by created_at desc`,
         [appId]
       )
-    : await pool.query<AnalyticsSinkRow>(
+    : await db.query<AnalyticsSinkRow>(
         `select ${SINK_COLUMNS} from analytics_sinks order by created_at desc`
       );
 
@@ -43,11 +43,11 @@ export async function listAnalyticsSinks(
 }
 
 export async function getAnalyticsSinkById(
-  pool: Pool,
+  db: D1Adapter,
   sinkId: string
 ): Promise<AnalyticsSink | null> {
-  const result = await pool.query<AnalyticsSinkRow>(
-    `select ${SINK_COLUMNS} from analytics_sinks where id = $1`,
+  const result = await db.query<AnalyticsSinkRow>(
+    `select ${SINK_COLUMNS} from analytics_sinks where id = ?`,
     [sinkId]
   );
 
@@ -59,17 +59,19 @@ export async function getAnalyticsSinkById(
 }
 
 export async function createAnalyticsSink(
-  pool: Pool,
+  db: D1Adapter,
   input: CreateAnalyticsSinkInput
 ): Promise<AnalyticsSink> {
   const now = new Date().toISOString();
   const id = uuidv4();
+  const configJson = serializeConfig(input.config);
+  const enabledValue = input.enabled ? 1 : 0;
 
-  const result = await pool.query<AnalyticsSinkRow>(
+  const result = await db.query<AnalyticsSinkRow>(
     `insert into analytics_sinks (id, app_id, type, config, enabled, created_at, updated_at)
-     values ($1, $2, $3, $4, $5, $6, $7)
+     values (?, ?, ?, ?, ?, ?, ?)
      returning ${SINK_COLUMNS}`,
-    [id, input.app_id, input.type, input.config, input.enabled, now, now]
+    [id, input.app_id, input.type, configJson, enabledValue, now, now]
   );
 
   const row = result.rows[0];
@@ -83,7 +85,7 @@ export async function createAnalyticsSink(
 }
 
 export async function updateAnalyticsSink(
-  pool: Pool,
+  db: D1Adapter,
   sinkId: string,
   input: UpdateAnalyticsSinkInput,
   existing: AnalyticsSink
@@ -93,17 +95,19 @@ export async function updateAnalyticsSink(
   const nextConfig = input.config ?? existing.config;
   const nextEnabled = input.enabled ?? existing.enabled;
   const now = new Date().toISOString();
+  const configJson = serializeConfig(nextConfig);
+  const enabledValue = nextEnabled ? 1 : 0;
 
-  const result = await pool.query<AnalyticsSinkRow>(
+  const result = await db.query<AnalyticsSinkRow>(
     `update analytics_sinks
-       set app_id = $2,
-           type = $3,
-           config = $4,
-           enabled = $5,
-           updated_at = $6
-     where id = $1
+       set app_id = ?,
+           type = ?,
+           config = ?,
+           enabled = ?,
+           updated_at = ?
+     where id = ?
      returning ${SINK_COLUMNS}`,
-    [sinkId, nextAppId, nextType, nextConfig, nextEnabled, now]
+    [nextAppId, nextType, configJson, enabledValue, now, sinkId]
   );
 
   const row = result.rows[0];
@@ -117,11 +121,11 @@ export async function updateAnalyticsSink(
 }
 
 export async function deleteAnalyticsSink(
-  pool: Pool,
+  db: D1Adapter,
   sinkId: string
 ): Promise<string | null> {
-  const result = await pool.query<{ app_id: string }>(
-    'delete from analytics_sinks where id = $1 returning app_id',
+  const result = await db.query<{ app_id: string }>(
+    'delete from analytics_sinks where id = ? returning app_id',
     [sinkId]
   );
 
@@ -143,4 +147,8 @@ function normalizeRows(rows: AnalyticsSinkRow[]): AnalyticsSink[] {
   }
 
   return sinks;
+}
+
+function serializeConfig(config: AnalyticsSinkConfig): string {
+  return JSON.stringify(config);
 }

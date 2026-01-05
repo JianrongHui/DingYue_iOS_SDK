@@ -1,6 +1,5 @@
-import type { Pool } from 'pg';
-
 import type { EtlCursor, RawEvent } from './types';
+import type { D1Adapter } from '../db';
 
 type EventRow = {
   id: string;
@@ -10,8 +9,10 @@ type EventRow = {
   created_at: string | Date;
 };
 
-export async function getLastProcessedCursor(pool: Pool): Promise<EtlCursor | null> {
-  const result = await pool.query<{ event_ts: string; event_id: string }>(
+export async function getLastProcessedCursor(
+  db: D1Adapter
+): Promise<EtlCursor | null> {
+  const result = await db.query<{ event_ts: string; event_id: string }>(
     'select event_ts, event_id from fact_events order by event_ts desc, event_id desc limit 1'
   );
 
@@ -26,15 +27,15 @@ export async function getLastProcessedCursor(pool: Pool): Promise<EtlCursor | nu
 }
 
 export async function extractNewEvents(
-  pool: Pool,
+  db: D1Adapter,
   cursor?: EtlCursor | null,
   batchSize: number = 1000
 ): Promise<RawEvent[]> {
   const limit = Math.max(1, batchSize);
 
   if (!cursor) {
-    const result = await pool.query<EventRow>(
-      'select id, app_id, event_name, payload, created_at from events order by created_at asc, id asc limit $1',
+    const result = await db.query<EventRow>(
+      'select id, app_id, event_name, payload, created_at from events order by created_at asc, id asc limit ?',
       [limit]
     );
 
@@ -47,9 +48,9 @@ export async function extractNewEvents(
     }));
   }
 
-  const result = await pool.query<EventRow>(
-    'select id, app_id, event_name, payload, created_at from events where (created_at > $1::timestamptz) or (created_at = $1::timestamptz and id > $2) order by created_at asc, id asc limit $3',
-    [cursor.event_ts, cursor.event_id, limit]
+  const result = await db.query<EventRow>(
+    'select id, app_id, event_name, payload, created_at from events where (created_at > ?) or (created_at = ? and id > ?) order by created_at asc, id asc limit ?',
+    [cursor.event_ts, cursor.event_ts, cursor.event_id, limit]
   );
 
   return result.rows.map((row) => ({

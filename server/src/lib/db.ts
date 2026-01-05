@@ -1,29 +1,22 @@
-import { Pool, PoolConfig } from 'pg';
+import { createD1Adapter, type D1Adapter } from './db-d1';
 
-let pool: Pool | undefined;
+let adapter: D1Adapter | undefined;
 
-export function getDbPool(): Pool {
-  if (!pool) {
-    pool = new Pool(buildPoolConfig());
+export type DbAdapter = D1Adapter;
+
+export function initDb(d1: D1Database): D1Adapter {
+  if (adapter) {
+    return adapter;
   }
 
-  return pool;
+  adapter = createD1Adapter(d1);
+  return adapter;
 }
 
-function buildPoolConfig(): PoolConfig {
-  const connectionString = process.env.DATABASE_URL;
-
-  if (connectionString && connectionString.trim().length > 0) {
-    return { connectionString };
+export function getDb(): D1Adapter {
+  if (!adapter) {
+    throw new Error('D1 adapter not initialized. Call initDb() before use.');
   }
 
-  const port = Number.parseInt(process.env.PGPORT ?? '', 10);
-
-  return {
-    host: process.env.PGHOST,
-    port: Number.isNaN(port) ? undefined : port,
-    user: process.env.PGUSER,
-    password: process.env.PGPASSWORD,
-    database: process.env.PGDATABASE
-  };
+  return adapter;
 }

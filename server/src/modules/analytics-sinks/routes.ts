@@ -1,7 +1,7 @@
 import { Express, Request, Response, Router } from 'express';
 
 import { invalidateSinkCache } from '../../lib/analytics/cache';
-import { getDbPool } from '../../lib/db';
+import { getDb } from '../../lib/db';
 import {
   createAnalyticsSink,
   deleteAnalyticsSink,
@@ -37,8 +37,8 @@ export function registerAnalyticsSinksRoutes(app: Express): void {
 async function handleList(req: Request, res: Response): Promise<void> {
   try {
     const appId = readQueryString(req.query.app_id);
-    const pool = getDbPool();
-    const sinks = await listAnalyticsSinks(pool, appId);
+    const db = getDb();
+    const sinks = await listAnalyticsSinks(db, appId);
 
     res.status(200).json({ sinks });
   } catch (error) {
@@ -56,8 +56,8 @@ async function handleCreate(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const pool = getDbPool();
-    const sink = await createAnalyticsSink(pool, parsed.input);
+    const db = getDb();
+    const sink = await createAnalyticsSink(db, parsed.input);
 
     invalidateSinkCache(sink.app_id);
     res.status(201).json({ sink });
@@ -76,8 +76,8 @@ async function handleUpdate(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const pool = getDbPool();
-    const existing = await getAnalyticsSinkById(pool, sinkId);
+    const db = getDb();
+    const existing = await getAnalyticsSinkById(db, sinkId);
 
     if (!existing) {
       sendNotFound(res, 'analytics sink not found');
@@ -91,7 +91,7 @@ async function handleUpdate(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const updated = await updateAnalyticsSink(pool, sinkId, parsed.input, existing);
+    const updated = await updateAnalyticsSink(db, sinkId, parsed.input, existing);
 
     if (updated.app_id !== existing.app_id) {
       invalidateSinkCache(existing.app_id);
@@ -114,8 +114,8 @@ async function handleDelete(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const pool = getDbPool();
-    const appId = await deleteAnalyticsSink(pool, sinkId);
+    const db = getDb();
+    const appId = await deleteAnalyticsSink(db, sinkId);
 
     if (!appId) {
       sendNotFound(res, 'analytics sink not found');
