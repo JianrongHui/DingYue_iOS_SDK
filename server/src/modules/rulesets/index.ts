@@ -64,7 +64,10 @@ async function handleCreate(c: Context<AppContext>): Promise<Response> {
     const priority = readNumber(body.priority);
     const condition = readCondition(body.condition);
     const variantId = readString(body.variant_id);
-    const experimentId = readNullableString(body.experiment_id);
+    const hasExperiment = Object.prototype.hasOwnProperty.call(body, 'experiment_id');
+    const experimentId = hasExperiment
+      ? readNullableString(body.experiment_id)
+      : null;
 
     if (!appId || !placementId || priority === undefined || priority === null || !variantId) {
       return sendValidationError(
@@ -75,6 +78,9 @@ async function handleCreate(c: Context<AppContext>): Promise<Response> {
 
     if (!condition) {
       return sendValidationError(c, 'condition is invalid');
+    }
+    if (hasExperiment && experimentId === undefined) {
+      return sendValidationError(c, 'experiment_id must be a string or null');
     }
 
     const now = new Date().toISOString();
@@ -93,7 +99,7 @@ async function handleCreate(c: Context<AppContext>): Promise<Response> {
         priority,
         JSON.stringify(condition),
         variantId,
-        experimentId,
+        experimentId ?? null,
         now
       ]
     );
@@ -147,6 +153,9 @@ async function handleUpdate(c: Context<AppContext>): Promise<Response> {
 
     if (condition === null) {
       return sendValidationError(c, 'condition is invalid');
+    }
+    if (hasExperiment && experimentId === undefined) {
+      return sendValidationError(c, 'experiment_id must be a string or null');
     }
 
     const db = c.get('db');

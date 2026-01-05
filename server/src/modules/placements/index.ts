@@ -57,13 +57,22 @@ async function handleCreate(c: Context<AppContext>): Promise<Response> {
     const placementId = readString(body.placement_id);
     const type = readString(body.type);
     const enabled = readBoolean(body.enabled) ?? true;
-    const defaultVariantId = readNullableString(body.default_variant_id);
+    const hasDefaultVariant = Object.prototype.hasOwnProperty.call(
+      body,
+      'default_variant_id'
+    );
+    const defaultVariantId = hasDefaultVariant
+      ? readNullableString(body.default_variant_id)
+      : null;
 
     if (!appId || !placementId || !type) {
       return sendValidationError(c, 'app_id, placement_id, type are required');
     }
     if (!ALLOWED_TYPES.has(type)) {
       return sendValidationError(c, 'type must be paywall or guide');
+    }
+    if (hasDefaultVariant && defaultVariantId === undefined) {
+      return sendValidationError(c, 'default_variant_id must be a string or null');
     }
 
     const now = new Date().toISOString();
@@ -79,7 +88,7 @@ async function handleCreate(c: Context<AppContext>): Promise<Response> {
         placementId,
         type,
         enabled ? 1 : 0,
-        defaultVariantId,
+        defaultVariantId ?? null,
         now,
         now
       ]
@@ -130,6 +139,9 @@ async function handleUpdate(c: Context<AppContext>): Promise<Response> {
       enabled === undefined
     ) {
       return sendValidationError(c, 'enabled must be a boolean');
+    }
+    if (hasDefaultVariant && defaultVariantId === undefined) {
+      return sendValidationError(c, 'default_variant_id must be a string or null');
     }
 
     const db = c.get('db');
