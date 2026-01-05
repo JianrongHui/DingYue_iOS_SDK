@@ -3,8 +3,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import AdmZip from 'adm-zip';
-import { Express, Request, Response, Router } from 'express';
+import type { Context, Hono } from 'hono';
 import { v4 as uuidv4 } from 'uuid';
+
+import type { AppContext } from '../../types/hono';
 
 type JsonObject = Record<string, unknown>;
 
@@ -50,22 +52,24 @@ const ALLOWED_PLACEMENT_TYPES = new Set<Manifest['placement_type']>(['paywall', 
 const pendingPackages = new Map<string, PendingPackage>();
 const storedPackages = new Map<string, StoredPackage>();
 
-export function registerPackagesModule(app: Express): void {
-  const router = Router();
-
-  router.post('/v1/admin/packages/presign', handlePresign);
-  router.post('/v1/admin/packages/commit', handleCommit);
-
-  app.use(router);
+export function registerPackagesModule(app: Hono<AppContext>): void {
+  app.post('/v1/admin/packages/presign', handlePresign);
+  app.post('/v1/admin/packages/commit', handleCommit);
 }
 
-async function handlePresign(req: Request, res: Response): Promise<void> {
+async function handlePresign(c: Context<AppContext>): Promise<Response> {
   try {
-    const body = asObject(req.body);
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch (_error) {
+      return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
+    }
+
+    const body = asObject(payload);
 
     if (!body) {
-      sendValidationError(res, 'INVALID_REQUEST', 'body must be an object');
-      return;
+      return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
     }
 
     const appId = readString(body.app_id);
@@ -73,8 +77,11 @@ async function handlePresign(req: Request, res: Response): Promise<void> {
     const filename = readString(body.filename);
 
     if (!appId || !placementId || !filename) {
-      sendValidationError(res, 'INVALID_REQUEST', 'app_id, placement_id, filename are required');
-      return;
+      return sendValidationError(
+        c,
+        'INVALID_REQUEST',
+        'app_id, placement_id, filename are required'
+      );
     }
 
     const packageId = createPackageId();
@@ -82,8 +89,7 @@ async function handlePresign(req: Request, res: Response): Promise<void> {
     const uploadPath = resolveStoragePath(storageKey, LOCAL_STORAGE_ROOT);
 
     if (!uploadPath) {
-      sendValidationError(res, 'INVALID_STORAGE_KEY', 'storage_key is invalid');
-      return;
+      return sendValidationError(c, 'INVALID_STORAGE_KEY', 'storage_key is invalid');
     }
 
     await fs.mkdir(path.dirname(uploadPath), { recursive: true });
@@ -96,24 +102,33 @@ async function handlePresign(req: Request, res: Response): Promise<void> {
       upload_path: uploadPath
     });
 
-    res.status(200).json({
-      package_id: packageId,
-      upload_url: uploadPath,
-      storage_key: storageKey
-    });
+    return c.json(
+      {
+        package_id: packageId,
+        upload_url: uploadPath,
+        storage_key: storageKey
+      },
+      200
+    );
   } catch (error) {
     console.error('Failed to presign package', error);
-    sendInternalError(res, 'failed to presign package');
+    return sendInternalError(c, 'failed to presign package');
   }
 }
 
-async function handleCommit(req: Request, res: Response): Promise<void> {
+async function handleCommit(c: Context<AppContext>): Promise<Response> {
   try {
-    const body = asObject(req.body);
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch (_error) {
+      return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
+    }
+
+    const body = asObject(payload);
 
     if (!body) {
-      sendValidationError(res, 'INVALID_REQUEST', 'body must be an object');
-      return;
+      return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
     }
 
     const appId = readString(body.app_id);
@@ -121,33 +136,44 @@ async function handleCommit(req: Request, res: Response): Promise<void> {
     const storageKey = readString(body.storage_key);
 
     if (!appId || !packageId || !storageKey) {
-      sendValidationError(res, 'INVALID_REQUEST', 'app_id, package_id, storage_key are required');
-      return;
+      return sendValidationError(
+        c,
+        'INVALID_REQUEST',
+        'app_id, package_id, storage_key are required'
+      );
     }
 
     const pendingPackage = pendingPackages.get(packageId);
 
     if (pendingPackage) {
       if (pendingPackage.app_id !== appId) {
-        sendValidationError(res, 'INVALID_REQUEST', 'app_id does not match presign record');
-        return;
+        return sendValidationError(
+          c,
+          'INVALID_REQUEST',
+          'app_id does not match presign record'
+        );
       }
       if (pendingPackage.storage_key !== storageKey) {
-        sendValidationError(res, 'INVALID_REQUEST', 'storage_key does not match presign record');
-        return;
+        return sendValidationError(
+          c,
+          'INVALID_REQUEST',
+          'storage_key does not match presign record'
+        );
       }
     }
 
     if (!storageKey.startsWith(`packages/${appId}/`)) {
-      sendValidationError(res, 'INVALID_STORAGE_KEY', 'storage_key must start with packages/{app_id}/');
-      return;
+      return sendValidationError(
+        c,
+        'INVALID_STORAGE_KEY',
+        'storage_key must start with packages/{app_id}/'
+      );
     }
 
     const storagePath = resolveStoragePath(storageKey, LOCAL_STORAGE_ROOT);
 
     if (!storagePath) {
-      sendValidationError(res, 'INVALID_STORAGE_KEY', 'storage_key is invalid');
-      return;
+      return sendValidationError(c, 'INVALID_STORAGE_KEY', 'storage_key is invalid');
     }
 
     let fileBuffer: Buffer;
@@ -158,8 +184,7 @@ async function handleCommit(req: Request, res: Response): Promise<void> {
       sizeBytes = stat.size;
       fileBuffer = await fs.readFile(storagePath);
     } catch (error) {
-      sendValidationError(res, 'UPLOAD_NOT_FOUND', 'uploaded package not found');
-      return;
+      return sendValidationError(c, 'UPLOAD_NOT_FOUND', 'uploaded package not found');
     }
 
     const checksum = computeChecksum(fileBuffer);
@@ -167,8 +192,7 @@ async function handleCommit(req: Request, res: Response): Promise<void> {
     const manifestResult = readManifest(zip);
 
     if (manifestResult.error) {
-      sendPackageError(res, manifestResult.error);
-      return;
+      return sendPackageError(c, manifestResult.error);
     }
 
     const manifest = manifestResult.manifest;
@@ -176,19 +200,21 @@ async function handleCommit(req: Request, res: Response): Promise<void> {
     const entry = findZipEntry(zip, normalizedEntryPath);
 
     if (!entry || entry.isDirectory) {
-      sendPackageError(res, {
+      return sendPackageError(c, {
         status: 400,
         code: 'ENTRY_NOT_FOUND',
         message: `entry_path ${manifest.entry_path} not found`
       });
-      return;
     }
 
     const cdnPath = resolveStoragePath(storageKey, LOCAL_CDN_ROOT);
 
     if (!cdnPath) {
-      sendValidationError(res, 'INVALID_STORAGE_KEY', 'storage_key is invalid for cdn path');
-      return;
+      return sendValidationError(
+        c,
+        'INVALID_STORAGE_KEY',
+        'storage_key is invalid for cdn path'
+      );
     }
 
     await fs.mkdir(path.dirname(cdnPath), { recursive: true });
@@ -211,17 +237,20 @@ async function handleCommit(req: Request, res: Response): Promise<void> {
     storedPackages.set(packageId, record);
     pendingPackages.delete(packageId);
 
-    res.status(200).json({
-      package_id: record.package_id,
-      version: record.version,
-      checksum: record.checksum,
-      cdn_url: record.cdn_url,
-      entry_path: record.entry_path,
-      size_bytes: record.size_bytes
-    });
+    return c.json(
+      {
+        package_id: record.package_id,
+        version: record.version,
+        checksum: record.checksum,
+        cdn_url: record.cdn_url,
+        entry_path: record.entry_path,
+        size_bytes: record.size_bytes
+      },
+      200
+    );
   } catch (error) {
     console.error('Failed to commit package', error);
-    sendInternalError(res, 'failed to commit package');
+    return sendInternalError(c, 'failed to commit package');
   }
 }
 
@@ -389,23 +418,36 @@ function findZipEntry(zip: AdmZip, targetPath: string): AdmZip.IZipEntry | null 
   );
 }
 
-function sendValidationError(res: Response, code: string, message: string): void {
-  res.status(400).json({
-    error: code,
-    message
-  });
+function sendValidationError(
+  c: Context<AppContext>,
+  code: string,
+  message: string
+): Response {
+  return c.json(
+    {
+      error: code,
+      message
+    },
+    400
+  );
 }
 
-function sendPackageError(res: Response, error: PackageError): void {
-  res.status(error.status).json({
-    error: error.code,
-    message: error.message
-  });
+function sendPackageError(c: Context<AppContext>, error: PackageError): Response {
+  return c.json(
+    {
+      error: error.code,
+      message: error.message
+    },
+    error.status
+  );
 }
 
-function sendInternalError(res: Response, message: string): void {
-  res.status(500).json({
-    error: 'internal_error',
-    message
-  });
+function sendInternalError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'internal_error',
+      message
+    },
+    500
+  );
 }

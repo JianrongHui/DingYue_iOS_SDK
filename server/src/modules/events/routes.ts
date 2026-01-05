@@ -1,7 +1,8 @@
-import { Express, Request, Response } from 'express';
+import type { Context, Hono } from 'hono';
 
 import { createAnalyticsForwarder, type SDKEvent } from '../../lib/analytics';
-import { getDb } from '../../lib/db';
+import type { D1Adapter } from '../../lib/db';
+import type { AppContext } from '../../types/hono';
 
 type JsonObject = Record<string, unknown>;
 
@@ -14,41 +15,44 @@ type StoredEvent = {
 };
 
 const SDK_EVENTS_PATH = '/v1/sdk/events';
-export function registerEventsRoutes(app: Express): void {
+export function registerEventsRoutes(app: Hono<AppContext>): void {
   app.post(SDK_EVENTS_PATH, handleEvents);
 }
 
-async function handleEvents(req: Request, res: Response): Promise<void> {
-  const body = asObject(req.body);
+async function handleEvents(c: Context<AppContext>): Promise<Response> {
+  let payload: unknown;
+  try {
+    payload = await c.req.json();
+  } catch (_error) {
+    return sendValidationError(c, 'body must be an object');
+  }
+
+  const body = asObject(payload);
 
   if (!body) {
-    sendValidationError(res, 'body must be an object');
-    return;
+    return sendValidationError(c, 'body must be an object');
   }
 
   const rawEvents = body.events;
 
   if (!Array.isArray(rawEvents)) {
-    sendValidationError(res, 'events must be an array');
-    return;
+    return sendValidationError(c, 'events must be an array');
   }
 
   const parsed = parseEvents(rawEvents);
 
   if (parsed.error) {
-    sendValidationError(res, parsed.error);
-    return;
+    return sendValidationError(c, parsed.error);
   }
 
   const deduped = dedupeEvents(parsed.events);
 
   if (deduped.length === 0) {
-    res.status(200).json({ ok: true, inserted: 0 });
-    return;
+    return c.json({ ok: true, inserted: 0 }, 200);
   }
 
   try {
-    const db = getDb();
+    const db = c.get('db');
     const query = buildInsertQuery(deduped);
     const result = await db.query<{ id: string }>(query.sql, query.params);
     const inserted = result.rowCount ?? 0;
@@ -56,18 +60,15 @@ async function handleEvents(req: Request, res: Response): Promise<void> {
     const insertedEvents = deduped.filter((event) => insertedIds.has(event.id));
 
     if (insertedEvents.length > 0) {
-      void forwardAnalyticsEvents(insertedEvents).catch((error) => {
+      void forwardAnalyticsEvents(db, insertedEvents, c.env).catch((error) => {
         console.warn('Failed to forward analytics events', error);
       });
     }
 
-    res.status(200).json({ ok: true, inserted });
+    return c.json({ ok: true, inserted }, 200);
   } catch (error) {
     console.error('Failed to persist events', error);
-    res.status(500).json({
-      error: 'internal_error',
-      message: 'failed to persist events'
-    });
+    return sendInternalError(c, 'failed to persist events');
   }
 }
 
@@ -169,15 +170,31 @@ function readString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function sendValidationError(res: Response, message: string): void {
-  res.status(400).json({
-    error: 'invalid_request',
-    message
-  });
+function sendValidationError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'invalid_request',
+      message
+    },
+    400
+  );
 }
 
-async function forwardAnalyticsEvents(events: StoredEvent[]): Promise<void> {
-  const db = getDb();
+function sendInternalError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'internal_error',
+      message
+    },
+    500
+  );
+}
+
+async function forwardAnalyticsEvents(
+  db: D1Adapter,
+  events: StoredEvent[],
+  env: AppContext['Bindings']
+): Promise<void> {
   const grouped = new Map<string, StoredEvent[]>();
 
   for (const event of events) {
@@ -191,7 +208,7 @@ async function forwardAnalyticsEvents(events: StoredEvent[]): Promise<void> {
 
   await Promise.all(
     Array.from(grouped.entries()).map(async ([appId, appEvents]) => {
-      const forwarder = await createAnalyticsForwarder(db, appId);
+      const forwarder = await createAnalyticsForwarder(db, appId, env);
       await Promise.all(
         appEvents.map((event) => forwarder.forward(event.payload as SDKEvent))
       );

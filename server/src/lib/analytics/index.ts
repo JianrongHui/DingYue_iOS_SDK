@@ -4,6 +4,7 @@ import { getSinksForApp } from './cache';
 import type { AnalyticsSink } from '../../modules/analytics-sinks/types';
 import type { AnalyticsForwarder, SDKEvent } from './types';
 import type { D1Adapter } from '../db';
+import type { Env } from '../../types/env';
 
 export { FirebaseForwarder } from './firebase';
 export { GA4Forwarder } from './ga4';
@@ -13,11 +14,11 @@ export type { AnalyticsForwarder, GA4Event, SDKEvent } from './types';
 
 const ENABLED_VALUES = new Set(['true', '1']);
 
-export function createAnalyticsForwarderFromEnv(): AnalyticsForwarder {
+export function createAnalyticsForwarderFromEnv(env: Env): AnalyticsForwarder {
   const forwarders: AnalyticsForwarder[] = [];
 
-  const ga4Forwarder = createGa4ForwarderFromEnv();
-  const firebaseForwarder = createFirebaseForwarderFromEnv();
+  const ga4Forwarder = createGa4ForwarderFromEnv(env);
+  const firebaseForwarder = createFirebaseForwarderFromEnv(env);
 
   if (ga4Forwarder) {
     forwarders.push(ga4Forwarder);
@@ -32,7 +33,8 @@ export function createAnalyticsForwarderFromEnv(): AnalyticsForwarder {
 
 export async function createAnalyticsForwarder(
   db: D1Adapter,
-  appId: string
+  appId: string,
+  env: Env
 ): Promise<AnalyticsForwarder> {
   const { sinks, hasAny } = await getSinksForApp(db, appId);
   const forwarders = sinks
@@ -40,7 +42,7 @@ export async function createAnalyticsForwarder(
     .filter((forwarder): forwarder is AnalyticsForwarder => Boolean(forwarder));
 
   if (forwarders.length === 0) {
-    return hasAny ? new NoopForwarder() : createAnalyticsForwarderFromEnv();
+    return hasAny ? new NoopForwarder() : createAnalyticsForwarderFromEnv(env);
   }
 
   return composeForwarders(forwarders);
@@ -98,15 +100,15 @@ function buildForwarderFromSink(sink: AnalyticsSink): AnalyticsForwarder | undef
   return;
 }
 
-function createGa4ForwarderFromEnv(): GA4Forwarder | undefined {
-  const enabled = isAnalyticsEnabled(process.env.ANALYTICS_ENABLED);
+function createGa4ForwarderFromEnv(env: Env): GA4Forwarder | undefined {
+  const enabled = isAnalyticsEnabled(env.ANALYTICS_ENABLED);
 
   if (!enabled) {
     return;
   }
 
-  const measurementId = readString(process.env.GA4_MEASUREMENT_ID);
-  const apiSecret = readString(process.env.GA4_API_SECRET);
+  const measurementId = readString(env.GA4_MEASUREMENT_ID);
+  const apiSecret = readString(env.GA4_API_SECRET);
 
   if (!measurementId || !apiSecret) {
     console.warn(
@@ -118,15 +120,15 @@ function createGa4ForwarderFromEnv(): GA4Forwarder | undefined {
   return new GA4Forwarder({ measurementId, apiSecret });
 }
 
-function createFirebaseForwarderFromEnv(): FirebaseForwarder | undefined {
-  const enabled = isAnalyticsEnabled(process.env.FIREBASE_ENABLED);
+function createFirebaseForwarderFromEnv(env: Env): FirebaseForwarder | undefined {
+  const enabled = isAnalyticsEnabled(env.FIREBASE_ENABLED);
 
   if (!enabled) {
     return;
   }
 
-  const appId = readString(process.env.FIREBASE_APP_ID);
-  const apiSecret = readString(process.env.FIREBASE_API_SECRET);
+  const appId = readString(env.FIREBASE_APP_ID);
+  const apiSecret = readString(env.FIREBASE_API_SECRET);
 
   if (!appId || !apiSecret) {
     console.warn(

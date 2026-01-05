@@ -1,4 +1,6 @@
-import { Express, Request, Response } from 'express';
+import type { Context, Hono } from 'hono';
+
+import type { AppContext } from '../../types/hono';
 import {
   assignExperiment,
   matchRulesets,
@@ -179,20 +181,26 @@ const MOCK_PLACEMENTS: PlacementConfig[] = [
   }
 ];
 
-export function registerConfigRoutes(app: Express): void {
-  app.post(SDK_CONFIG_PATH, (req: Request, res: Response) => {
-    const validationError = validateConfigRequest(req.body as ConfigRequest);
+export function registerConfigRoutes(app: Hono<AppContext>): void {
+  app.post(SDK_CONFIG_PATH, handleConfigRequest);
+}
 
-    if (validationError) {
-      res.status(400).json({
-        error: 'invalid_request',
-        message: validationError
-      });
-      return;
-    }
+async function handleConfigRequest(c: Context<AppContext>): Promise<Response> {
+  let body: ConfigRequest | undefined;
 
-    res.status(200).json(buildConfigResponse(req.body as ConfigRequest));
-  });
+  try {
+    body = (await c.req.json()) as ConfigRequest;
+  } catch (_error) {
+    return sendValidationError(c, 'body must be an object');
+  }
+
+  const validationError = validateConfigRequest(body);
+
+  if (validationError) {
+    return sendValidationError(c, validationError);
+  }
+
+  return c.json(buildConfigResponse(body), 200);
 }
 
 function validateConfigRequest(body: ConfigRequest | undefined): string | null {
@@ -222,6 +230,16 @@ function validateConfigRequest(body: ConfigRequest | undefined): string | null {
   }
 
   return null;
+}
+
+function sendValidationError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'invalid_request',
+      message
+    },
+    400
+  );
 }
 
 function isNonEmptyString(value: unknown): value is string {

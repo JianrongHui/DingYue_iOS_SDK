@@ -1,7 +1,7 @@
-import { Express, Request, Response, Router } from 'express';
+import type { Context, Hono } from 'hono';
 
 import { invalidateSinkCache } from '../../lib/analytics/cache';
-import { getDb } from '../../lib/db';
+import type { AppContext } from '../../types/hono';
 import {
   createAnalyticsSink,
   deleteAnalyticsSink,
@@ -23,72 +23,78 @@ type JsonObject = Record<string, unknown>;
 
 const ANALYTICS_SINKS_PATH = '/v1/admin/analytics-sinks';
 
-export function registerAnalyticsSinksRoutes(app: Express): void {
-  const router = Router();
-
-  router.get(ANALYTICS_SINKS_PATH, handleList);
-  router.post(ANALYTICS_SINKS_PATH, handleCreate);
-  router.patch(`${ANALYTICS_SINKS_PATH}/:sink_id`, handleUpdate);
-  router.delete(`${ANALYTICS_SINKS_PATH}/:sink_id`, handleDelete);
-
-  app.use(router);
+export function registerAnalyticsSinksRoutes(app: Hono<AppContext>): void {
+  app.get(ANALYTICS_SINKS_PATH, handleList);
+  app.post(ANALYTICS_SINKS_PATH, handleCreate);
+  app.patch(`${ANALYTICS_SINKS_PATH}/:sink_id`, handleUpdate);
+  app.delete(`${ANALYTICS_SINKS_PATH}/:sink_id`, handleDelete);
 }
 
-async function handleList(req: Request, res: Response): Promise<void> {
+async function handleList(c: Context<AppContext>): Promise<Response> {
   try {
-    const appId = readQueryString(req.query.app_id);
-    const db = getDb();
+    const appId = readString(c.req.query('app_id'));
+    const db = c.get('db');
     const sinks = await listAnalyticsSinks(db, appId);
 
-    res.status(200).json({ sinks });
+    return c.json({ sinks }, 200);
   } catch (error) {
     console.error('Failed to list analytics sinks', error);
-    sendInternalError(res, 'failed to list analytics sinks');
+    return sendInternalError(c, 'failed to list analytics sinks');
   }
 }
 
-async function handleCreate(req: Request, res: Response): Promise<void> {
+async function handleCreate(c: Context<AppContext>): Promise<Response> {
   try {
-    const parsed = parseCreateBody(req.body);
-
-    if (parsed.error) {
-      sendValidationError(res, parsed.error);
-      return;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch (_error) {
+      return sendValidationError(c, 'body must be an object');
     }
 
-    const db = getDb();
+    const parsed = parseCreateBody(body);
+
+    if (parsed.error) {
+      return sendValidationError(c, parsed.error);
+    }
+
+    const db = c.get('db');
     const sink = await createAnalyticsSink(db, parsed.input);
 
     invalidateSinkCache(sink.app_id);
-    res.status(201).json({ sink });
+    return c.json({ sink }, 201);
   } catch (error) {
     console.error('Failed to create analytics sink', error);
-    sendInternalError(res, 'failed to create analytics sink');
+    return sendInternalError(c, 'failed to create analytics sink');
   }
 }
 
-async function handleUpdate(req: Request, res: Response): Promise<void> {
+async function handleUpdate(c: Context<AppContext>): Promise<Response> {
   try {
-    const sinkId = readString(req.params.sink_id);
+    const sinkId = readString(c.req.param('sink_id'));
 
     if (!sinkId) {
-      sendValidationError(res, 'sink_id is required');
-      return;
+      return sendValidationError(c, 'sink_id is required');
     }
 
-    const db = getDb();
+    const db = c.get('db');
     const existing = await getAnalyticsSinkById(db, sinkId);
 
     if (!existing) {
-      sendNotFound(res, 'analytics sink not found');
-      return;
+      return sendNotFound(c, 'analytics sink not found');
     }
 
-    const parsed = parseUpdateBody(req.body, existing);
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch (_error) {
+      return sendValidationError(c, 'body must be an object');
+    }
+
+    const parsed = parseUpdateBody(body, existing);
 
     if (parsed.error) {
-      sendValidationError(res, parsed.error);
-      return;
+      return sendValidationError(c, parsed.error);
     }
 
     const updated = await updateAnalyticsSink(db, sinkId, parsed.input, existing);
@@ -98,35 +104,33 @@ async function handleUpdate(req: Request, res: Response): Promise<void> {
     }
     invalidateSinkCache(updated.app_id);
 
-    res.status(200).json({ sink: updated });
+    return c.json({ sink: updated }, 200);
   } catch (error) {
     console.error('Failed to update analytics sink', error);
-    sendInternalError(res, 'failed to update analytics sink');
+    return sendInternalError(c, 'failed to update analytics sink');
   }
 }
 
-async function handleDelete(req: Request, res: Response): Promise<void> {
+async function handleDelete(c: Context<AppContext>): Promise<Response> {
   try {
-    const sinkId = readString(req.params.sink_id);
+    const sinkId = readString(c.req.param('sink_id'));
 
     if (!sinkId) {
-      sendValidationError(res, 'sink_id is required');
-      return;
+      return sendValidationError(c, 'sink_id is required');
     }
 
-    const db = getDb();
+    const db = c.get('db');
     const appId = await deleteAnalyticsSink(db, sinkId);
 
     if (!appId) {
-      sendNotFound(res, 'analytics sink not found');
-      return;
+      return sendNotFound(c, 'analytics sink not found');
     }
 
     invalidateSinkCache(appId);
-    res.status(200).json({ ok: true });
+    return c.json({ ok: true }, 200);
   } catch (error) {
     console.error('Failed to delete analytics sink', error);
-    sendInternalError(res, 'failed to delete analytics sink');
+    return sendInternalError(c, 'failed to delete analytics sink');
   }
 }
 
@@ -242,14 +246,6 @@ function readString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function readQueryString(value: unknown): string | undefined {
-  if (Array.isArray(value)) {
-    return readString(value[0]);
-  }
-
-  return readString(value);
-}
-
 function readBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') {
     return value;
@@ -272,23 +268,32 @@ function readBoolean(value: unknown): boolean | undefined {
   return;
 }
 
-function sendValidationError(res: Response, message: string): void {
-  res.status(400).json({
-    error: 'invalid_request',
-    message
-  });
+function sendValidationError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'invalid_request',
+      message
+    },
+    400
+  );
 }
 
-function sendNotFound(res: Response, message: string): void {
-  res.status(404).json({
-    error: 'not_found',
-    message
-  });
+function sendNotFound(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'not_found',
+      message
+    },
+    404
+  );
 }
 
-function sendInternalError(res: Response, message: string): void {
-  res.status(500).json({
-    error: 'internal_error',
-    message
-  });
+function sendInternalError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'internal_error',
+      message
+    },
+    500
+  );
 }

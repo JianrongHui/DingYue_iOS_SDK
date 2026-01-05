@@ -1,5 +1,6 @@
-import { createHmac, createHash, timingSafeEqual } from 'crypto';
-import { NextFunction, Request, Response } from 'express';
+import type { Context, MiddlewareHandler } from 'hono';
+
+import type { AppContext } from '../types/hono';
 
 const HEADER_APP_ID = 'x-app-id';
 const HEADER_TIMESTAMP = 'x-timestamp';
@@ -14,83 +15,77 @@ const APP_KEYS: Record<string, string> = {
   app_x: 'app_key_x'
 };
 
-const nonceCache: Map<string, number> = new Map();
-
-export function hmacAuth(req: Request, res: Response, next: NextFunction): void {
-  const appId = getHeaderValue(req, HEADER_APP_ID);
+export const hmacAuth: MiddlewareHandler<AppContext> = async (c, next) => {
+  const appId = getHeaderValue(c, HEADER_APP_ID);
   if (!appId) {
-    unauthorized(res, 'missing X-App-Id header');
-    return;
+    return unauthorized(c, 'missing X-App-Id header');
   }
 
   const appKey = APP_KEYS[appId];
   if (!appKey) {
-    unauthorized(res, 'unknown X-App-Id');
-    return;
+    return unauthorized(c, 'unknown X-App-Id');
   }
 
-  const timestampHeader = getHeaderValue(req, HEADER_TIMESTAMP);
+  const timestampHeader = getHeaderValue(c, HEADER_TIMESTAMP);
   if (!timestampHeader) {
-    unauthorized(res, 'missing X-Timestamp header');
-    return;
+    return unauthorized(c, 'missing X-Timestamp header');
   }
   if (!/^\d+$/.test(timestampHeader)) {
-    unauthorized(res, 'invalid X-Timestamp header');
-    return;
+    return unauthorized(c, 'invalid X-Timestamp header');
   }
 
   const timestampSec = Number.parseInt(timestampHeader, 10);
   const nowSec = Math.floor(Date.now() / 1000);
   if (Math.abs(nowSec - timestampSec) > ALLOWED_TIME_SKEW_SEC) {
-    unauthorized(res, 'timestamp out of range');
-    return;
+    return unauthorized(c, 'timestamp out of range');
   }
 
-  const nonce = getHeaderValue(req, HEADER_NONCE);
+  const nonce = getHeaderValue(c, HEADER_NONCE);
   if (!nonce) {
-    unauthorized(res, 'missing X-Nonce header');
-    return;
+    return unauthorized(c, 'missing X-Nonce header');
   }
 
-  const signature = getHeaderValue(req, HEADER_SIGNATURE);
+  const signature = getHeaderValue(c, HEADER_SIGNATURE);
   if (!signature) {
-    unauthorized(res, 'missing X-Signature header');
-    return;
+    return unauthorized(c, 'missing X-Signature header');
   }
 
-  const canonicalPath = getCanonicalPath(req);
-  const bodyHash = sha256Hex(getBodyBuffer(req));
+  const canonicalPath = getCanonicalPath(c);
+  const bodyHash = await sha256Hex(getBodyBuffer(c));
   const canonicalString = [
-    req.method.toUpperCase(),
+    c.req.method.toUpperCase(),
     canonicalPath,
     timestampHeader,
     nonce,
     bodyHash
   ].join('\n');
 
-  const expectedSignature = hmacSha256Hex(appKey, canonicalString);
-  if (!timingSafeEqualString(signature.toLowerCase(), expectedSignature)) {
-    unauthorized(res, 'invalid signature');
-    return;
+  const expectedSignature = await hmacSha256Hex(appKey, canonicalString);
+  const providedSignature = signature.trim().toLowerCase();
+  const expectedMac = await hmacSha256Bytes(appKey, expectedSignature);
+  const providedMac = await hmacSha256Bytes(appKey, providedSignature);
+  if (!timingSafeEqual(expectedMac, providedMac)) {
+    return unauthorized(c, 'invalid signature');
   }
-
-  const nowMs = Date.now();
-  cleanupExpiredNonces(nowMs);
 
   const nonceKey = `${appId}:${nonce}`;
-  const existingExpiry = nonceCache.get(nonceKey);
-  if (existingExpiry && existingExpiry > nowMs) {
-    unauthorized(res, 'nonce already used');
-    return;
+  const existing = await c.env.NONCE_CACHE.get(nonceKey);
+  if (existing) {
+    return unauthorized(c, 'nonce already used');
   }
 
-  nonceCache.set(nonceKey, nowMs + NONCE_TTL_MS);
+  await c.env.NONCE_CACHE.put(nonceKey, '1', {
+    expirationTtl: Math.floor(NONCE_TTL_MS / 1000)
+  });
 
-  next();
-}
+  c.set('appId', appId);
+  c.set('appKey', appKey);
 
-function getHeaderValue(req: Request, headerName: string): string | null {
-  const value = req.get(headerName);
+  await next();
+};
+
+function getHeaderValue(c: Context<AppContext>, headerName: string): string | null {
+  const value = c.req.header(headerName);
   if (!value) {
     return null;
   }
@@ -98,45 +93,78 @@ function getHeaderValue(req: Request, headerName: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function getCanonicalPath(req: Request): string {
-  const originalUrl = req.originalUrl || req.url || '';
-  const path = originalUrl.split('?')[0];
+function getCanonicalPath(c: Context<AppContext>): string {
+  const path = c.req.path;
   return path || '/';
 }
 
-function getBodyBuffer(req: Request): Buffer {
-  if (Buffer.isBuffer(req.rawBody)) {
-    return req.rawBody;
-  }
-  return Buffer.alloc(0);
+function getBodyBuffer(c: Context<AppContext>): ArrayBuffer {
+  const rawBody = c.get('rawBody');
+  return rawBody ?? new ArrayBuffer(0);
 }
 
-function sha256Hex(body: Buffer): string {
-  return createHash('sha256').update(body).digest('hex');
+async function sha256Hex(body: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', body);
+  return bufferToHex(hashBuffer);
 }
 
-function hmacSha256Hex(key: string, data: string): string {
-  return createHmac('sha256', key).update(data).digest('hex');
+async function hmacSha256Hex(key: string, data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    cryptoKey,
+    encoder.encode(data)
+  );
+  return bufferToHex(signature);
 }
 
-function timingSafeEqualString(left: string, right: string): boolean {
+async function hmacSha256Bytes(key: string, data: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    cryptoKey,
+    encoder.encode(data)
+  );
+  return new Uint8Array(signature);
+}
+
+function timingSafeEqual(left: Uint8Array, right: Uint8Array): boolean {
   if (left.length !== right.length) {
     return false;
   }
-  return timingSafeEqual(Buffer.from(left), Buffer.from(right));
-}
-
-function cleanupExpiredNonces(nowMs: number): void {
-  for (const [nonceKey, expiresAt] of nonceCache) {
-    if (expiresAt <= nowMs) {
-      nonceCache.delete(nonceKey);
-    }
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    diff |= left[i] ^ right[i];
   }
+  return diff === 0;
 }
 
-function unauthorized(res: Response, message: string): void {
-  res.status(401).json({
-    error: 'unauthorized',
-    message
-  });
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function unauthorized(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'unauthorized',
+      message
+    },
+    401
+  );
 }

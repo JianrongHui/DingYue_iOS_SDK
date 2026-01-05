@@ -1,18 +1,16 @@
-import { randomUUID } from 'crypto';
-import { NextFunction, Request, Response } from 'express';
+import type { MiddlewareHandler } from 'hono';
+
+import type { AppContext } from '../types/hono';
 
 const REQUEST_ID_HEADER = 'x-request-id';
 
-export function requestIdMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
-  const incomingId = req.header(REQUEST_ID_HEADER);
-  const requestId = incomingId && incomingId.trim() ? incomingId : randomUUID();
+export const requestIdMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
+  const incomingId = c.req.header(REQUEST_ID_HEADER);
+  const requestId =
+    incomingId && incomingId.trim().length > 0 ? incomingId.trim() : crypto.randomUUID();
 
-  req.request_id = requestId;
-  res.setHeader(REQUEST_ID_HEADER, requestId);
+  c.set('requestId', requestId);
+  c.header(REQUEST_ID_HEADER, requestId);
 
-  next();
-}
+  await next();
+};

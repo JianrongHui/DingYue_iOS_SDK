@@ -1,26 +1,28 @@
-import { Express, Request, Response } from 'express';
+import type { Context, Hono } from 'hono';
 
-import { getDb } from '../../lib/db';
 import { getFactEventsEtlStatus, runFactEventsEtl } from '../../lib/etl';
+import type { AppContext } from '../../types/hono';
 
 type JsonObject = Record<string, unknown>;
 
 const ETL_RUN_PATH = '/v1/admin/etl/run';
 const ETL_STATUS_PATH = '/v1/admin/etl/status';
 
-export function registerEtlRoutes(app: Express): void {
+export function registerEtlRoutes(app: Hono<AppContext>): void {
   app.post(ETL_RUN_PATH, handleEtlRun);
   app.get(ETL_STATUS_PATH, handleEtlStatus);
 }
 
-async function handleEtlRun(req: Request, res: Response): Promise<void> {
+async function handleEtlRun(c: Context<AppContext>): Promise<Response> {
   try {
-    const rawBody = req.body;
+    const rawBody = await readOptionalJson(c);
+    if (rawBody === null) {
+      return sendValidationError(c, 'body must be an object');
+    }
     const body = asObject(rawBody);
 
     if (!body && rawBody !== undefined && rawBody !== null) {
-      sendValidationError(res, 'body must be an object');
-      return;
+      return sendValidationError(c, 'body must be an object');
     }
 
     const options = body ?? {};
@@ -28,43 +30,47 @@ async function handleEtlRun(req: Request, res: Response): Promise<void> {
     const maxBatches = readPositiveInt(options.max_batches);
 
     if (options.batch_size !== undefined && batchSize === undefined) {
-      sendValidationError(res, 'batch_size must be a positive integer');
-      return;
+      return sendValidationError(c, 'batch_size must be a positive integer');
     }
 
     if (options.max_batches !== undefined && maxBatches === undefined) {
-      sendValidationError(res, 'max_batches must be a positive integer');
-      return;
+      return sendValidationError(c, 'max_batches must be a positive integer');
     }
 
-    const db = getDb();
+    const db = c.get('db');
     const result = await runFactEventsEtl(db, {
       batchSize,
       maxBatches
     });
 
-    res.status(200).json({
-      ok: true,
-      ...result
-    });
+    return c.json(
+      {
+        ok: true,
+        ...result
+      },
+      200
+    );
   } catch (error) {
     console.error('Failed to run ETL', error);
-    sendInternalError(res, 'failed to run etl');
+    return sendInternalError(c, 'failed to run etl');
   }
 }
 
-async function handleEtlStatus(_req: Request, res: Response): Promise<void> {
+async function handleEtlStatus(c: Context<AppContext>): Promise<Response> {
   try {
-    const db = getDb();
+    const db = c.get('db');
     const status = await getFactEventsEtlStatus(db);
 
-    res.status(200).json({
-      ok: true,
-      ...status
-    });
+    return c.json(
+      {
+        ok: true,
+        ...status
+      },
+      200
+    );
   } catch (error) {
     console.error('Failed to fetch ETL status', error);
-    sendInternalError(res, 'failed to fetch etl status');
+    return sendInternalError(c, 'failed to fetch etl status');
   }
 }
 
@@ -95,16 +101,36 @@ function readPositiveInt(value: unknown): number | undefined {
   return;
 }
 
-function sendValidationError(res: Response, message: string): void {
-  res.status(400).json({
-    error: 'invalid_request',
-    message
-  });
+async function readOptionalJson(c: Context<AppContext>): Promise<unknown | undefined> {
+  const rawText = await c.req.raw.clone().text();
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (_error) {
+    return null;
+  }
 }
 
-function sendInternalError(res: Response, message: string): void {
-  res.status(500).json({
-    error: 'internal_error',
-    message
-  });
+function sendValidationError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'invalid_request',
+      message
+    },
+    400
+  );
+}
+
+function sendInternalError(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'internal_error',
+      message
+    },
+    500
+  );
 }

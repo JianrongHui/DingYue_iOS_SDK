@@ -1,5 +1,7 @@
 import { createD1Adapter, type D1Adapter } from './db-d1';
 
+export type { D1Adapter } from './db-d1';
+
 let adapter: D1Adapter | undefined;
 
 export type DbAdapter = D1Adapter;
