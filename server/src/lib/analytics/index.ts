@@ -5,6 +5,7 @@ import type { AnalyticsForwarder, SDKEvent } from './types';
 export { FirebaseForwarder } from './firebase';
 export { GA4Forwarder } from './ga4';
 export { mapToGA4 } from './mapper';
+export { CONVERSION_QUERY, GUIDE_COMPLETION_QUERY, SKU_CONVERSION_QUERY } from './queries';
 export type { AnalyticsForwarder, GA4Event, SDKEvent } from './types';
 
 const ENABLED_VALUES = new Set(['true', '1']);
