@@ -339,6 +339,53 @@ curl -sS -X POST https://configapi.calmwaveapp.com/v1/admin/apps \
 
 说明：/v1/sdk/* 需要 HMAC 签名，时间窗口为 ±5 分钟，nonce 10 分钟内不可复用。
 
+#### 5) 包上传/commit 流程（预签名方案）
+
+准备一个符合规范的 zip 包（需包含 `manifest.json` 与 `entry_path`，参考 `DingYueSDK_Docs/08-H5-Package-Spec.md`）。
+
+1) 申请上传信息（presign）
+
+```bash
+API_BASE="https://configapi.calmwaveapp.com"
+APP_ID="app_xxxxxxxx"
+PLACEMENT_ID="paywall_main"
+FILENAME="paywall.zip"
+
+curl -sS -X POST "$API_BASE/v1/admin/packages/presign" \
+  -H "Content-Type: application/json" \
+  --data "{\"app_id\":\"$APP_ID\",\"placement_id\":\"$PLACEMENT_ID\",\"filename\":\"$FILENAME\"}"
+```
+
+返回示例：
+
+```json
+{
+  "package_id": "pkg_xxx",
+  "upload_url": "https://configapi.calmwaveapp.com/v1/admin/packages/upload/pkg_xxx?storage_key=packages/app_xxx/paywall_main/pkg_xxx.zip",
+  "storage_key": "packages/app_xxx/paywall_main/pkg_xxx.zip"
+}
+```
+
+2) 上传 zip 到 Worker（会转存到 R2）
+
+```bash
+UPLOAD_URL="https://configapi.calmwaveapp.com/v1/admin/packages/upload/pkg_xxx?storage_key=packages/app_xxx/paywall_main/pkg_xxx.zip"
+curl -sS -X PUT "$UPLOAD_URL" --data-binary @"./paywall.zip"
+```
+
+3) 提交并入库（commit）
+
+```bash
+PACKAGE_ID="pkg_xxx"
+STORAGE_KEY="packages/app_xxx/paywall_main/pkg_xxx.zip"
+
+curl -sS -X POST "$API_BASE/v1/admin/packages/commit" \
+  -H "Content-Type: application/json" \
+  --data "{\"app_id\":\"$APP_ID\",\"package_id\":\"$PACKAGE_ID\",\"storage_key\":\"$STORAGE_KEY\"}"
+```
+
+成功后会返回 `cdn_url`、`checksum`、`entry_path` 等信息。若未设置 `CDN_BASE_URL`，`cdn_url` 可能为 storage_key。
+
 ## 部署命令
 
 - Worker：`cd server && wrangler deploy`
