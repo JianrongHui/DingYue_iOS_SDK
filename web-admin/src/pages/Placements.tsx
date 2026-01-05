@@ -1,17 +1,16 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { listApps } from "../api/apps";
+import { getErrorMessage, shouldUseFallback } from "../api/client";
 import {
-  seedApps,
-  seedPlacements,
-  seedVariants,
-  type App,
-  type Placement,
-  type Variant
-} from "../data/admin_seed";
-import { generateId, getItems, setItems } from "../utils/storage";
-
-const APPS_KEY = "dy_apps";
-const PLACEMENTS_KEY = "dy_placements";
-const VARIANTS_KEY = "dy_variants";
+  createPlacement,
+  deletePlacement,
+  listPlacementsByApps,
+  updatePlacement
+} from "../api/placements";
+import { listVariantsByPlacements } from "../api/variants";
+import type { App, Placement, Variant } from "../api/types";
+import { seedApps, seedPlacements, seedVariants } from "../data/admin_seed";
+import { generateId } from "../utils/storage";
 
 const statusClass = (status: string) => `status status-${status}`;
 
@@ -31,52 +30,35 @@ export default function PlacementsPage() {
     type: "guide" as Placement["type"]
   });
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const appsRaw = window.localStorage.getItem(APPS_KEY);
-      const storedApps = getItems<App>(APPS_KEY);
-      const resolvedApps = appsRaw ? storedApps : seedApps;
-      if (!appsRaw) {
-        setItems(APPS_KEY, seedApps);
-      }
-      setApps(resolvedApps);
-
-      const placementsRaw = window.localStorage.getItem(PLACEMENTS_KEY);
-      const storedPlacements = getItems<Placement>(PLACEMENTS_KEY);
-      const resolvedPlacements = placementsRaw ? storedPlacements : seedPlacements;
-      if (!placementsRaw) {
-        setItems(PLACEMENTS_KEY, seedPlacements);
-      }
-      setPlacements(resolvedPlacements);
-
-      const variantsRaw = window.localStorage.getItem(VARIANTS_KEY);
-      const storedVariants = getItems<Variant>(VARIANTS_KEY);
-      const resolvedVariants = variantsRaw ? storedVariants : seedVariants;
-      if (!variantsRaw) {
-        setItems(VARIANTS_KEY, seedVariants);
-      }
-      setVariants(resolvedVariants);
+      const appsData = await listApps();
+      setApps(appsData);
+      const placementsData = await listPlacementsByApps(
+        appsData.map((app) => app.app_id)
+      );
+      setPlacements(placementsData);
+      const variantsData = await listVariantsByPlacements(placementsData);
+      setVariants(variantsData);
     } catch (loadError) {
-      setError("Failed to load placements data from localStorage.");
+      if (shouldUseFallback(loadError)) {
+        setApps(seedApps);
+        setPlacements(seedPlacements);
+        setVariants(seedVariants);
+        setError("API unavailable. Showing mock placements.");
+      } else {
+        setError(getErrorMessage(loadError));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
-
-  const savePlacements = (nextPlacements: Placement[]) => {
-    setPlacements(nextPlacements);
-    try {
-      setItems(PLACEMENTS_KEY, nextPlacements);
-    } catch (saveError) {
-      setError("Failed to save placements to localStorage.");
-    }
-  };
 
   const filteredPlacements = useMemo(() => {
     if (filterAppId === "all") {
@@ -85,31 +67,85 @@ export default function PlacementsPage() {
     return placements.filter((placement) => placement.app_id === filterAppId);
   }, [placements, filterAppId]);
 
-  const handleToggleEnabled = (target: Placement) => {
-    const nextPlacements = placements.map((placement) =>
-      placement.id === target.id
-        ? { ...placement, enabled: !placement.enabled }
-        : placement
-    );
-    savePlacements(nextPlacements);
+  const handleToggleEnabled = async (target: Placement) => {
+    const nextEnabled = !target.enabled;
+    setError(null);
+    try {
+      const updated = await updatePlacement(target.placement_id, {
+        enabled: nextEnabled
+      });
+      setPlacements((prev) =>
+        prev.map((placement) =>
+          placement.id === target.id ? updated : placement
+        )
+      );
+    } catch (updateError) {
+      if (shouldUseFallback(updateError)) {
+        setPlacements((prev) =>
+          prev.map((placement) =>
+            placement.id === target.id
+              ? { ...placement, enabled: nextEnabled }
+              : placement
+          )
+        );
+        setError("API unavailable. Updated placement locally.");
+      } else {
+        setError(getErrorMessage(updateError));
+      }
+    }
   };
 
-  const handleDelete = (target: Placement) => {
+  const handleDelete = async (target: Placement) => {
     if (!window.confirm(`Delete placement ${target.placement_id}?`)) {
       return;
     }
-    const nextPlacements = placements.filter((placement) => placement.id !== target.id);
-    savePlacements(nextPlacements);
+    setError(null);
+    try {
+      await deletePlacement(target.placement_id);
+      setPlacements((prev) =>
+        prev.filter((placement) => placement.id !== target.id)
+      );
+    } catch (deleteError) {
+      if (shouldUseFallback(deleteError)) {
+        setPlacements((prev) =>
+          prev.filter((placement) => placement.id !== target.id)
+        );
+        setError("API unavailable. Deleted placement locally.");
+      } else {
+        setError(getErrorMessage(deleteError));
+      }
+    }
   };
 
-  const handleDefaultVariantChange = (placementId: string, nextVariantId: string) => {
+  const handleDefaultVariantChange = async (
+    placementId: string,
+    nextVariantId: string
+  ) => {
     const value = nextVariantId || null;
-    const nextPlacements = placements.map((placement) =>
-      placement.placement_id === placementId
-        ? { ...placement, default_variant_id: value }
-        : placement
-    );
-    savePlacements(nextPlacements);
+    setError(null);
+    try {
+      const updated = await updatePlacement(placementId, {
+        default_variant_id: value
+      });
+      setPlacements((prev) =>
+        prev.map((placement) =>
+          placement.placement_id === placementId ? updated : placement
+        )
+      );
+    } catch (updateError) {
+      if (shouldUseFallback(updateError)) {
+        setPlacements((prev) =>
+          prev.map((placement) =>
+            placement.placement_id === placementId
+              ? { ...placement, default_variant_id: value }
+              : placement
+          )
+        );
+        setError("API unavailable. Updated default variant locally.");
+      } else {
+        setError(getErrorMessage(updateError));
+      }
+    }
   };
 
   const openCreate = () => {
@@ -123,7 +159,7 @@ export default function PlacementsPage() {
     setCreateOpen(false);
   };
 
-  const handleCreate = (event: FormEvent<HTMLFormElement>) => {
+  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const placementId = createForm.placement_id.trim();
     if (!createForm.app_id) {
@@ -139,20 +175,34 @@ export default function PlacementsPage() {
       return;
     }
 
-    const newPlacement: Placement = {
-      id: generateId(),
-      app_id: createForm.app_id,
-      placement_id: placementId,
-      type: createForm.type,
-      enabled: true,
-      default_variant_id: null,
-      created_at: today()
-    };
-
-    const nextPlacements = [newPlacement, ...placements];
-    savePlacements(nextPlacements);
     setError(null);
-    setCreateOpen(false);
+    try {
+      const created = await createPlacement({
+        app_id: createForm.app_id,
+        placement_id: placementId,
+        type: createForm.type,
+        enabled: true
+      });
+      setPlacements((prev) => [created, ...prev]);
+      setCreateOpen(false);
+    } catch (createError) {
+      if (shouldUseFallback(createError)) {
+        const newPlacement: Placement = {
+          id: generateId(),
+          app_id: createForm.app_id,
+          placement_id: placementId,
+          type: createForm.type,
+          enabled: true,
+          default_variant_id: null,
+          created_at: today()
+        };
+        setPlacements((prev) => [newPlacement, ...prev]);
+        setCreateOpen(false);
+        setError("API unavailable. Created placement locally.");
+      } else {
+        setError(getErrorMessage(createError));
+      }
+    }
   };
 
   return (

@@ -1,27 +1,11 @@
-import { useMemo, useState } from "react";
-import { apps, placements, variants } from "../data/mock_data";
-
-interface EventSummary {
-  event_name: string;
-  placement_id: string;
-  variant_id: string;
-  count: number;
-  unique_users: number;
-  last_seen_at: string;
-}
-
-interface EventDetail {
-  event_id: string;
-  event_name: string;
-  timestamp: string;
-  app_id: string;
-  placement_id: string;
-  variant_id: string;
-  device_id: string;
-  product_id?: string;
-  price?: number;
-  currency?: string;
-}
+import { useEffect, useMemo, useState } from "react";
+import { listApps } from "../api/apps";
+import { getErrorMessage, shouldUseFallback } from "../api/client";
+import { queryEvents } from "../api/events";
+import { listPlacementsByApps } from "../api/placements";
+import { listVariantsByPlacements } from "../api/variants";
+import type { App, EventDetail, EventSummary, Placement, Variant } from "../api/types";
+import { seedApps, seedPlacements, seedVariants } from "../data/admin_seed";
 
 interface QueryFilters {
   appId: string;
@@ -99,10 +83,14 @@ const randomFrom = <T,>(items: T[]) => items[randomInt(0, items.length - 1)];
 
 const randomId = () => Math.random().toString(36).slice(2, 10);
 
-const pickPlacement = (appId: string, placementId: string) => {
+const pickPlacement = (
+  appId: string,
+  placementId: string,
+  placementPool: Placement[]
+) => {
   const trimmed = placementId.trim();
   if (trimmed) {
-    const found = placements.find(
+    const found = placementPool.find(
       (placement) => placement.placement_id === trimmed
     );
     if (found) {
@@ -111,37 +99,41 @@ const pickPlacement = (appId: string, placementId: string) => {
     return { placement_id: trimmed, app_id: appId };
   }
 
-  const appPlacements = placements.filter(
+  const appPlacements = placementPool.filter(
     (placement) => placement.app_id === appId
   );
   if (appPlacements.length) {
     return randomFrom(appPlacements);
   }
-  if (placements.length) {
-    return randomFrom(placements);
+  if (placementPool.length) {
+    return randomFrom(placementPool);
   }
   return { placement_id: "plc_unknown", app_id: appId };
 };
 
-const pickVariantId = (placementId: string) => {
-  const placementVariants = variants.filter(
+const pickVariantId = (placementId: string, variantPool: Variant[]) => {
+  const placementVariants = variantPool.filter(
     (variant) => variant.placement_id === placementId
   );
   if (placementVariants.length) {
-    return randomFrom(placementVariants).variant_id;
+    return randomFrom(placementVariants).id;
   }
   return "var_default";
 };
 
-const generateMockEvents = (filters: QueryFilters) => {
+const generateMockEvents = (
+  filters: QueryFilters,
+  sources: { apps: App[]; placements: Placement[]; variants: Variant[] }
+) => {
   const { start, end } = normalizeDateRange(filters.from, filters.to);
   const selectedEventNames = filters.eventNames.length
     ? filters.eventNames
     : EVENT_TYPES;
   const appPool =
     filters.appId === "all"
-      ? apps.map((app) => app.app_id)
+      ? sources.apps.map((app) => app.app_id)
       : [filters.appId];
+  const safeAppPool = appPool.length ? appPool : ["app_unknown"];
 
   const recordCount = randomInt(50, 100);
   const devicePool = Array.from({ length: randomInt(20, 40) }, (_, index) => {
@@ -152,10 +144,14 @@ const generateMockEvents = (filters: QueryFilters) => {
 
   for (let i = 0; i < recordCount; i += 1) {
     const event_name = randomFrom(selectedEventNames);
-    const app_id = randomFrom(appPool);
-    const placement = pickPlacement(app_id, filters.placementId);
+    const app_id = randomFrom(safeAppPool);
+    const placement = pickPlacement(
+      app_id,
+      filters.placementId,
+      sources.placements
+    );
     const placement_id = placement.placement_id;
-    const variant_id = pickVariantId(placement_id);
+    const variant_id = pickVariantId(placement_id, sources.variants);
     const startTime = start.getTime();
     const endTime = end.getTime();
     const eventTimestamp =
@@ -245,6 +241,11 @@ const csvEscape = (value: string | number) => {
 };
 
 export default function EventsPage() {
+  const [apps, setApps] = useState<App[]>(seedApps);
+  const [placements, setPlacements] = useState<Placement[]>(seedPlacements);
+  const [variants, setVariants] = useState<Variant[]>(seedVariants);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [appId, setAppId] = useState("all");
   const [selectedEventNames, setSelectedEventNames] = useState<string[]>([]);
   const [placementId, setPlacementId] = useState("");
@@ -253,13 +254,20 @@ export default function EventsPage() {
   const [funnelEventA, setFunnelEventA] = useState(EVENT_TYPES[3]);
   const [funnelEventB, setFunnelEventB] = useState(EVENT_TYPES[8]);
   const [eventDetails, setEventDetails] = useState<EventDetail[]>(() =>
-    generateMockEvents({
-      appId: "all",
-      eventNames: [],
-      placementId: "",
-      from: DEFAULT_FROM,
-      to: DEFAULT_TO
-    })
+    generateMockEvents(
+      {
+        appId: "all",
+        eventNames: [],
+        placementId: "",
+        from: DEFAULT_FROM,
+        to: DEFAULT_TO
+      },
+      {
+        apps: seedApps,
+        placements: seedPlacements,
+        variants: seedVariants
+      }
+    )
   );
 
   const eventSummary = useMemo(() => buildSummary(eventDetails), [eventDetails]);
@@ -271,22 +279,86 @@ export default function EventsPage() {
     return counts;
   }, [eventSummary]);
 
+  useEffect(() => {
+    const loadMeta = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const appsData = await listApps();
+        setApps(appsData);
+        const placementsData = await listPlacementsByApps(
+          appsData.map((app) => app.app_id)
+        );
+        setPlacements(placementsData);
+        const variantsData = await listVariantsByPlacements(placementsData);
+        setVariants(variantsData);
+      } catch (loadError) {
+        if (shouldUseFallback(loadError)) {
+          setApps(seedApps);
+          setPlacements(seedPlacements);
+          setVariants(seedVariants);
+          setError("API unavailable. Using mock metadata.");
+        } else {
+          setError(getErrorMessage(loadError));
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadMeta();
+  }, []);
+
   const eventACount = eventCounts.get(funnelEventA) ?? 0;
   const eventBCount = eventCounts.get(funnelEventB) ?? 0;
   const conversionRate =
     eventACount > 0 ? (eventBCount / eventACount) * 100 : 0;
   const conversionLabel = `${conversionRate.toFixed(2)}%`;
 
-  const runQuery = () => {
-    setEventDetails(
-      generateMockEvents({
-        appId,
-        eventNames: selectedEventNames,
-        placementId,
-        from,
-        to
-      })
-    );
+  const runQuery = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const targetAppIds =
+        appId === "all" ? apps.map((app) => app.app_id) : [appId];
+      if (!targetAppIds.length) {
+        setEventDetails([]);
+        setLoading(false);
+        return;
+      }
+      const responses = await Promise.all(
+        targetAppIds.map((targetAppId) =>
+          queryEvents({
+            app_id: targetAppId,
+            event_name: selectedEventNames,
+            placement_id: placementId || undefined,
+            from,
+            to
+          })
+        )
+      );
+      setEventDetails(responses.flat());
+    } catch (queryError) {
+      if (shouldUseFallback(queryError)) {
+        setEventDetails(
+          generateMockEvents(
+            {
+              appId,
+              eventNames: selectedEventNames,
+              placementId,
+              from,
+              to
+            },
+            { apps, placements, variants }
+          )
+        );
+        setError("API unavailable. Showing mock events.");
+      } else {
+        setError(getErrorMessage(queryError));
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const exportCsv = () => {
@@ -340,6 +412,9 @@ export default function EventsPage() {
           export_csv
         </button>
       </div>
+
+      {loading && <div className="banner">loading events...</div>}
+      {error && <div className="banner error">{error}</div>}
 
       <div className="card">
         <div className="card-header">

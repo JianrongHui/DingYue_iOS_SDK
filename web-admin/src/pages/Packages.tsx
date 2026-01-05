@@ -1,41 +1,24 @@
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { listApps } from "../api/apps";
+import { getErrorMessage, shouldUseFallback } from "../api/client";
+import { listPlacementsByApps } from "../api/placements";
 import {
-  seedApps,
-  seedPlacements,
-  seedVariants,
-  type App,
-  type Placement,
-  type Variant
-} from "../data/admin_seed";
-import { generateId, getItems, setItems } from "../utils/storage";
-
-const APPS_KEY = "dy_apps";
-const PLACEMENTS_KEY = "dy_placements";
-const VARIANTS_KEY = "dy_variants";
-const PACKAGES_KEY = "dy_packages";
-
-type PackageManifest = {
-  manifest_version: number;
-  placement_type: Placement["type"];
-  package_version: string;
-  entry_path: string;
-};
-
-type PackageStatus = "active" | "inactive" | "rolled_back";
-
-type PackageRecord = {
-  id: string;
-  app_id: string;
-  placement_id: string;
-  version: string;
-  checksum: string;
-  entry_path: string;
-  cdn_url: string;
-  size_bytes: number;
-  status: PackageStatus;
-  manifest: PackageManifest;
-  created_at: string;
-};
+  commitPackage,
+  listPackages,
+  presignPackage,
+  type PackagePresignResponse
+} from "../api/packages";
+import { listVariantsByPlacements } from "../api/variants";
+import type {
+  App,
+  PackageManifest,
+  PackageRecord,
+  PackageStatus,
+  Placement,
+  Variant
+} from "../api/types";
+import { seedApps, seedPlacements, seedVariants } from "../data/admin_seed";
+import { generateId } from "../utils/storage";
 
 type UploadPreview = {
   manifest: PackageManifest;
@@ -197,54 +180,44 @@ export default function PackagesPage() {
     file: null
   });
   const [uploadPreview, setUploadPreview] = useState<UploadPreview | null>(null);
+  const [presignInfo, setPresignInfo] = useState<PackagePresignResponse | null>(
+    null
+  );
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     setSuccess(null);
     try {
-      const appsRaw = window.localStorage.getItem(APPS_KEY);
-      const storedApps = getItems<App>(APPS_KEY);
-      const resolvedApps = appsRaw ? storedApps : seedApps;
-      if (!appsRaw) {
-        setItems(APPS_KEY, seedApps);
-      }
-      setApps(resolvedApps);
-
-      const placementsRaw = window.localStorage.getItem(PLACEMENTS_KEY);
-      const storedPlacements = getItems<Placement>(PLACEMENTS_KEY);
-      const resolvedPlacements = placementsRaw ? storedPlacements : seedPlacements;
-      if (!placementsRaw) {
-        setItems(PLACEMENTS_KEY, seedPlacements);
-      }
-      setPlacements(resolvedPlacements);
-
-      const variantsRaw = window.localStorage.getItem(VARIANTS_KEY);
-      const storedVariants = getItems<Variant>(VARIANTS_KEY);
-      const resolvedVariants = variantsRaw ? storedVariants : seedVariants;
-      if (!variantsRaw) {
-        setItems(VARIANTS_KEY, seedVariants);
-      }
-      setVariants(resolvedVariants);
-
-      const packagesRaw = window.localStorage.getItem(PACKAGES_KEY);
-      const storedPackages = getItems<PackageRecord>(PACKAGES_KEY);
-      const resolvedPackages = packagesRaw ? storedPackages : seedPackages;
-      if (!packagesRaw) {
-        setItems(PACKAGES_KEY, seedPackages);
-      }
-      setPackages(resolvedPackages);
+      const appsData = await listApps();
+      setApps(appsData);
+      const placementsData = await listPlacementsByApps(
+        appsData.map((app) => app.app_id)
+      );
+      setPlacements(placementsData);
+      const variantsData = await listVariantsByPlacements(placementsData);
+      setVariants(variantsData);
+      const packagesData = await listPackages();
+      setPackages(packagesData);
     } catch (loadError) {
-      setError("Failed to load packages data from localStorage.");
+      if (shouldUseFallback(loadError)) {
+        setApps(seedApps);
+        setPlacements(seedPlacements);
+        setVariants(seedVariants);
+        setPackages(seedPackages);
+        setError("API unavailable. Showing mock packages.");
+      } else {
+        setError(getErrorMessage(loadError));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   useEffect(() => {
@@ -283,15 +256,6 @@ export default function PackagesPage() {
       setSelectedPackageId(packages[0]?.id ?? "");
     }
   }, [packages, selectedPackageId]);
-
-  const savePackages = (nextPackages: PackageRecord[]) => {
-    setPackages(nextPackages);
-    try {
-      setItems(PACKAGES_KEY, nextPackages);
-    } catch (saveError) {
-      setError("Failed to save packages to localStorage.");
-    }
-  };
 
   const filteredPlacements = useMemo(() => {
     if (!filterAppId) {
@@ -341,6 +305,7 @@ export default function PackagesPage() {
         : nextPlacements[0]?.placement_id ?? ""
     }));
     setUploadPreview(null);
+    setPresignInfo(null);
   };
 
   const handleUploadPlacementChange = (value: string) => {
@@ -349,23 +314,26 @@ export default function PackagesPage() {
       placement_id: value
     }));
     setUploadPreview(null);
+    setPresignInfo(null);
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     setUploadForm((prev) => ({ ...prev, file }));
     setUploadPreview(null);
+    setPresignInfo(null);
   };
 
   const resetUpload = () => {
     setUploadForm((prev) => ({ ...prev, file: null }));
     setUploadPreview(null);
+    setPresignInfo(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  const handleParseManifest = () => {
+  const handleParseManifest = async () => {
     setError(null);
     setSuccess(null);
     if (!uploadForm.app_id || !uploadForm.placement_id) {
@@ -400,17 +368,33 @@ export default function PackagesPage() {
       version,
       uploadForm.file.name
     );
-
-    setUploadPreview({
+    const preview = {
       manifest,
       checksum,
       size_bytes: uploadForm.file.size,
       file_name: uploadForm.file.name,
       cdn_url: cdnUrl
-    });
+    };
+
+    setUploadPreview(preview);
+    try {
+      const presign = await presignPackage({
+        app_id: uploadForm.app_id,
+        placement_id: uploadForm.placement_id,
+        filename: uploadForm.file.name
+      });
+      setPresignInfo(presign);
+    } catch (presignError) {
+      if (shouldUseFallback(presignError)) {
+        setPresignInfo(null);
+        setError("API unavailable. Using local upload flow.");
+      } else {
+        setError(getErrorMessage(presignError));
+      }
+    }
   };
 
-  const handleConfirmUpload = () => {
+  const handleConfirmUpload = async () => {
     setError(null);
     setSuccess(null);
     if (!uploadForm.file || !uploadPreview) {
@@ -425,7 +409,7 @@ export default function PackagesPage() {
         pkg.status === "active"
     );
     const status: PackageStatus = hasActive ? "inactive" : "active";
-    const nextPackage: PackageRecord = {
+    const buildLocalPackage = (): PackageRecord => ({
       id: buildShortId("pkg"),
       app_id: uploadForm.app_id,
       placement_id: uploadForm.placement_id,
@@ -437,13 +421,69 @@ export default function PackagesPage() {
       status,
       manifest: uploadPreview.manifest,
       created_at: today()
-    };
+    });
 
-    const nextPackages = [nextPackage, ...packages];
-    savePackages(nextPackages);
-    setSelectedPackageId(nextPackage.id);
-    resetUpload();
-    setSuccess("Package uploaded. Activate the version when ready.");
+    if (presignInfo) {
+      try {
+        if (!presignInfo.upload_url.startsWith("http")) {
+          throw new Error("Upload URL is not reachable.");
+        }
+        const uploadResponse = await fetch(presignInfo.upload_url, {
+          method: "PUT",
+          body: uploadForm.file
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed with status ${uploadResponse.status}.`);
+        }
+        const committed = await commitPackage({
+          app_id: uploadForm.app_id,
+          package_id: presignInfo.package_id,
+          storage_key: presignInfo.storage_key
+        });
+        const nextPackage: PackageRecord = {
+          id: committed.package_id,
+          app_id: uploadForm.app_id,
+          placement_id: committed.placement_id ?? uploadForm.placement_id,
+          version: committed.version,
+          checksum: committed.checksum,
+          entry_path: committed.entry_path,
+          cdn_url: committed.cdn_url,
+          size_bytes: committed.size_bytes,
+          status,
+          manifest: uploadPreview.manifest,
+          created_at: committed.created_at ?? today()
+        };
+        setPackages((prev) => [nextPackage, ...prev]);
+        setSelectedPackageId(nextPackage.id);
+        resetUpload();
+        setSuccess("Package uploaded. Activate the version when ready.");
+        return;
+      } catch (uploadError) {
+        if (shouldUseFallback(uploadError)) {
+          const nextPackage = buildLocalPackage();
+          setPackages((prev) => [nextPackage, ...prev]);
+          setSelectedPackageId(nextPackage.id);
+          resetUpload();
+          setSuccess("Package uploaded locally. Activate the version when ready.");
+          setError("API unavailable. Stored package locally.");
+          return;
+        }
+        setError(getErrorMessage(uploadError));
+        return;
+      }
+    }
+
+    if (import.meta.env.DEV) {
+      const nextPackage = buildLocalPackage();
+      setPackages((prev) => [nextPackage, ...prev]);
+      setSelectedPackageId(nextPackage.id);
+      resetUpload();
+      setSuccess("Package uploaded locally. Activate the version when ready.");
+      setError("API unavailable. Stored package locally.");
+      return;
+    }
+
+    setError("Upload signature missing. Refresh and try again.");
   };
 
   const handleActivate = (target: PackageRecord) => {
@@ -464,7 +504,7 @@ export default function PackagesPage() {
       }
       return pkg;
     });
-    savePackages(nextPackages);
+    setPackages(nextPackages);
     setSuccess(`Activated version ${target.version}.`);
   };
 
@@ -505,7 +545,7 @@ export default function PackagesPage() {
       }
       return pkg;
     });
-    savePackages(nextPackages);
+    setPackages(nextPackages);
     setSuccess(`Rolled back to version ${rollbackTarget.version}.`);
   };
 
@@ -520,7 +560,7 @@ export default function PackagesPage() {
       return;
     }
     const nextPackages = packages.filter((pkg) => pkg.id !== target.id);
-    savePackages(nextPackages);
+    setPackages(nextPackages);
     setSuccess(`Deleted package ${target.id}.`);
   };
 

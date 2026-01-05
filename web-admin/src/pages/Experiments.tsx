@@ -1,38 +1,24 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { listApps } from "../api/apps";
+import { getErrorMessage, shouldUseFallback } from "../api/client";
 import {
-  seedApps,
-  seedPlacements,
-  seedVariants,
-  type App,
-  type Placement,
-  type Variant
-} from "../data/admin_seed";
-import { generateId, getItems, setItems } from "../utils/storage";
-
-const APPS_KEY = "dy_apps";
-const PLACEMENTS_KEY = "dy_placements";
-const VARIANTS_KEY = "dy_variants";
-const EXPERIMENTS_KEY = "dy_experiments";
-
-type ExperimentStatus = "draft" | "running" | "paused" | "ended";
-
-type ExperimentVariant = {
-  variant_id: string;
-  weight: number;
-};
-
-type Experiment = {
-  id: string;
-  app_id: string;
-  placement_id: string;
-  status: ExperimentStatus;
-  traffic: number;
-  seed: string;
-  variants: ExperimentVariant[];
-  created_at: string;
-  started_at?: string;
-  ended_at?: string;
-};
+  createExperiment,
+  deleteExperiment,
+  listExperimentsByPlacements,
+  updateExperiment as updateExperimentApi
+} from "../api/experiments";
+import { listPlacementsByApps } from "../api/placements";
+import { listVariantsByPlacements } from "../api/variants";
+import type {
+  App,
+  Experiment,
+  ExperimentStatus,
+  ExperimentVariant,
+  Placement,
+  Variant
+} from "../api/types";
+import { seedApps, seedPlacements, seedVariants } from "../data/admin_seed";
+import { generateId } from "../utils/storage";
 
 type ExperimentFormState = {
   app_id: string;
@@ -201,52 +187,37 @@ export default function ExperimentsPage() {
     null
   );
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const appsRaw = window.localStorage.getItem(APPS_KEY);
-      const storedApps = getItems<App>(APPS_KEY);
-      const resolvedApps = appsRaw ? storedApps : seedApps;
-      if (!appsRaw) {
-        setItems(APPS_KEY, seedApps);
-      }
-      setApps(resolvedApps);
-
-      const placementsRaw = window.localStorage.getItem(PLACEMENTS_KEY);
-      const storedPlacements = getItems<Placement>(PLACEMENTS_KEY);
-      const resolvedPlacements = placementsRaw ? storedPlacements : seedPlacements;
-      if (!placementsRaw) {
-        setItems(PLACEMENTS_KEY, seedPlacements);
-      }
-      setPlacements(resolvedPlacements);
-
-      const variantsRaw = window.localStorage.getItem(VARIANTS_KEY);
-      const storedVariants = getItems<Variant>(VARIANTS_KEY);
-      const resolvedVariants = variantsRaw ? storedVariants : seedVariants;
-      if (!variantsRaw) {
-        setItems(VARIANTS_KEY, seedVariants);
-      }
-      setVariants(resolvedVariants);
-
-      const experimentsRaw = window.localStorage.getItem(EXPERIMENTS_KEY);
-      const storedExperiments = getItems<Experiment>(EXPERIMENTS_KEY);
-      const resolvedExperiments = experimentsRaw
-        ? storedExperiments
-        : seedExperiments;
-      if (!experimentsRaw) {
-        setItems(EXPERIMENTS_KEY, seedExperiments);
-      }
-      setExperiments(resolvedExperiments);
+      const appsData = await listApps();
+      setApps(appsData);
+      const placementsData = await listPlacementsByApps(
+        appsData.map((app) => app.app_id)
+      );
+      setPlacements(placementsData);
+      const variantsData = await listVariantsByPlacements(placementsData);
+      setVariants(variantsData);
+      const experimentsData = await listExperimentsByPlacements(placementsData);
+      setExperiments(experimentsData);
     } catch (loadError) {
-      setError("Failed to load experiments data from localStorage.");
+      if (shouldUseFallback(loadError)) {
+        setApps(seedApps);
+        setPlacements(seedPlacements);
+        setVariants(seedVariants);
+        setExperiments(seedExperiments);
+        setError("API unavailable. Showing mock experiments.");
+      } else {
+        setError(getErrorMessage(loadError));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   useEffect(() => {
@@ -261,15 +232,6 @@ export default function ExperimentsPage() {
       setFilterPlacementId("");
     }
   }, [filterAppId, filterPlacementId, placements]);
-
-  const saveExperiments = (nextExperiments: Experiment[]) => {
-    setExperiments(nextExperiments);
-    try {
-      setItems(EXPERIMENTS_KEY, nextExperiments);
-    } catch (saveError) {
-      setError("Failed to save experiments to localStorage.");
-    }
-  };
 
   const filteredPlacements = useMemo(() => {
     if (!filterAppId) {
@@ -453,7 +415,7 @@ export default function ExperimentsPage() {
     });
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const traffic = Number(form.traffic);
     if (!form.app_id || !form.placement_id) {
@@ -519,46 +481,106 @@ export default function ExperimentsPage() {
       return;
     }
 
-    const nextExperiment: Experiment = {
-      id: editingExperiment?.id ?? buildShortId("exp"),
+    const payload = {
       app_id: form.app_id,
       placement_id: form.placement_id,
       status: editingExperiment?.status ?? "draft",
       traffic,
       seed: form.seed.trim(),
-      variants: cleanedVariants,
-      created_at: editingExperiment?.created_at ?? today(),
-      started_at: editingExperiment?.started_at,
-      ended_at: editingExperiment?.ended_at
+      variants: cleanedVariants
     };
 
-    const nextExperiments = editingExperiment
-      ? experiments.map((experiment) =>
-          experiment.id === editingExperiment.id ? nextExperiment : experiment
-        )
-      : [nextExperiment, ...experiments];
-
-    saveExperiments(nextExperiments);
-    setModalOpen(false);
-    setEditingExperiment(null);
     setFormError(null);
+    try {
+      if (editingExperiment) {
+        const updated = await updateExperimentApi(editingExperiment.id, {
+          status: payload.status,
+          traffic: payload.traffic,
+          variants: payload.variants
+        });
+        setExperiments((prev) =>
+          prev.map((experiment) =>
+            experiment.id === editingExperiment.id
+              ? { ...experiment, ...updated }
+              : experiment
+          )
+        );
+      } else {
+        const created = await createExperiment(payload);
+        setExperiments((prev) => [created, ...prev]);
+      }
+      setModalOpen(false);
+      setEditingExperiment(null);
+    } catch (saveError) {
+      if (shouldUseFallback(saveError)) {
+        const fallbackExperiment: Experiment = {
+          id: editingExperiment?.id ?? buildShortId("exp"),
+          app_id: payload.app_id,
+          placement_id: payload.placement_id,
+          status: payload.status,
+          traffic: payload.traffic,
+          seed: payload.seed,
+          variants: payload.variants,
+          created_at: editingExperiment?.created_at ?? today(),
+          started_at: editingExperiment?.started_at,
+          ended_at: editingExperiment?.ended_at
+        };
+        setExperiments((prev) =>
+          editingExperiment
+            ? prev.map((experiment) =>
+                experiment.id === editingExperiment.id
+                  ? fallbackExperiment
+                  : experiment
+              )
+            : [fallbackExperiment, ...prev]
+        );
+        setModalOpen(false);
+        setEditingExperiment(null);
+        setFormError(null);
+        setError("API unavailable. Saved experiment locally.");
+      } else {
+        setFormError(getErrorMessage(saveError));
+      }
+    }
   };
 
-  const updateExperiment = (
+  const applyExperimentUpdate = async (
     target: Experiment,
     updates: Partial<Experiment>
   ) => {
-    const nextExperiments = experiments.map((experiment) =>
-      experiment.id === target.id ? { ...experiment, ...updates } : experiment
-    );
-    saveExperiments(nextExperiments);
+    setError(null);
+    try {
+      const updated = await updateExperimentApi(target.id, {
+        status: updates.status,
+        traffic: updates.traffic,
+        variants: updates.variants
+      });
+      setExperiments((prev) =>
+        prev.map((experiment) =>
+          experiment.id === target.id
+            ? { ...experiment, ...updates, ...updated }
+            : experiment
+        )
+      );
+    } catch (updateError) {
+      if (shouldUseFallback(updateError)) {
+        setExperiments((prev) =>
+          prev.map((experiment) =>
+            experiment.id === target.id ? { ...experiment, ...updates } : experiment
+          )
+        );
+        setError("API unavailable. Updated experiment locally.");
+      } else {
+        setError(getErrorMessage(updateError));
+      }
+    }
   };
 
   const handleStart = (target: Experiment) => {
     if (target.status !== "draft") {
       return;
     }
-    updateExperiment(target, {
+    applyExperimentUpdate(target, {
       status: "running",
       started_at: target.started_at ?? today(),
       ended_at: undefined
@@ -569,34 +591,46 @@ export default function ExperimentsPage() {
     if (target.status !== "running") {
       return;
     }
-    updateExperiment(target, { status: "paused" });
+    applyExperimentUpdate(target, { status: "paused" });
   };
 
   const handleResume = (target: Experiment) => {
     if (target.status !== "paused") {
       return;
     }
-    updateExperiment(target, { status: "running" });
+    applyExperimentUpdate(target, { status: "running" });
   };
 
   const handleEnd = (target: Experiment) => {
     if (target.status === "ended") {
       return;
     }
-    updateExperiment(target, {
+    applyExperimentUpdate(target, {
       status: "ended",
       ended_at: today()
     });
   };
 
-  const handleDelete = (target: Experiment) => {
+  const handleDelete = async (target: Experiment) => {
     if (!window.confirm(`Delete experiment ${target.id}?`)) {
       return;
     }
-    const nextExperiments = experiments.filter(
-      (experiment) => experiment.id !== target.id
-    );
-    saveExperiments(nextExperiments);
+    setError(null);
+    try {
+      await deleteExperiment(target.id);
+      setExperiments((prev) =>
+        prev.filter((experiment) => experiment.id !== target.id)
+      );
+    } catch (deleteError) {
+      if (shouldUseFallback(deleteError)) {
+        setExperiments((prev) =>
+          prev.filter((experiment) => experiment.id !== target.id)
+        );
+        setError("API unavailable. Deleted experiment locally.");
+      } else {
+        setError(getErrorMessage(deleteError));
+      }
+    }
   };
 
   return (
