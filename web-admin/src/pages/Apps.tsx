@@ -7,6 +7,11 @@ import { generateId } from "../utils/storage";
 
 const statusClass = (status: string) => `status status-${status}`;
 
+const ENV_LABELS: Record<App["env"], string> = {
+  prod: "生产",
+  staging: "预发"
+};
+
 const buildShortId = (prefix: string) => {
   const base = generateId().replace(/-/g, "");
   return `${prefix}_${base.slice(0, 6)}`;
@@ -39,7 +44,7 @@ export default function AppsPage() {
     } catch (loadError) {
       if (shouldUseFallback(loadError)) {
         setApps(seedApps);
-        setError("API unavailable. Showing mock apps.");
+        setError("API 不可用，显示模拟应用。");
       } else {
         setError(getErrorMessage(loadError));
       }
@@ -95,7 +100,7 @@ export default function AppsPage() {
             app.id === target.id ? { ...app, status: nextStatus } : app
           )
         );
-        setError("API unavailable. Updated status locally.");
+        setError("API 不可用，已在本地更新状态。");
       } else {
         setError(getErrorMessage(updateError));
       }
@@ -103,7 +108,7 @@ export default function AppsPage() {
   };
 
   const handleDelete = async (target: App) => {
-    if (!window.confirm(`Delete app ${target.app_id}?`)) {
+    if (!window.confirm(`确认删除应用 ${target.app_id}？`)) {
       return;
     }
     setError(null);
@@ -113,7 +118,7 @@ export default function AppsPage() {
     } catch (deleteError) {
       if (shouldUseFallback(deleteError)) {
         setApps((prev) => prev.filter((app) => app.id !== target.id));
-        setError("API unavailable. Deleted app locally.");
+        setError("API 不可用，已在本地删除应用。");
       } else {
         setError(getErrorMessage(deleteError));
       }
@@ -122,11 +127,11 @@ export default function AppsPage() {
 
   const handleCopy = (value: string, label: string) => {
     if (!navigator.clipboard) {
-      setError(`Clipboard unavailable for ${label}.`);
+      setError(`剪贴板不可用，无法复制 ${label}。`);
       return;
     }
     navigator.clipboard.writeText(value).catch(() => {
-      setError(`Failed to copy ${label}.`);
+      setError(`复制 ${label} 失败。`);
     });
   };
 
@@ -146,7 +151,7 @@ export default function AppsPage() {
     event.preventDefault();
     const name = createForm.name.trim();
     if (!name) {
-      setError("App name is required.");
+      setError("应用名称为必填。");
       return;
     }
 
@@ -172,7 +177,7 @@ export default function AppsPage() {
         setApps((prev) => [newApp, ...prev]);
         setCreatedSecrets({ app_id: newAppId, app_key: newAppKey });
         setCreateForm({ name: "", env: "prod" });
-        setError("API unavailable. Created app locally.");
+        setError("API 不可用，已在本地创建应用。");
       } else {
         setError(getErrorMessage(createError));
       }
@@ -183,27 +188,27 @@ export default function AppsPage() {
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={openCreate}>
-          create_app
+          新建应用
         </button>
         <button className="ghost" type="button" onClick={loadApps}>
-          refresh
+          刷新
         </button>
       </div>
 
-      {loading && <div className="banner">loading apps...</div>}
+      {loading && <div className="banner">正在加载应用...</div>}
       {error && <div className="banner error">{error}</div>}
 
       <div className="card-grid">
         <div className="card">
-          <div className="card-label">total_apps</div>
+          <div className="card-label">应用总数</div>
           <div className="card-value">{summary.total}</div>
         </div>
         <div className="card">
-          <div className="card-label">active_apps</div>
+          <div className="card-label">启用应用</div>
           <div className="card-value">{summary.active}</div>
         </div>
         <div className="card">
-          <div className="card-label">latest_release</div>
+          <div className="card-label">最新创建</div>
           <div className="card-value">{summary.latest}</div>
         </div>
       </div>
@@ -211,21 +216,21 @@ export default function AppsPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>app_list</h3>
-            <p>Manage app_id, keys, and environment state.</p>
+            <h3>应用列表</h3>
+            <p>管理 app_id、密钥与环境状态。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              app_id
+              应用 ID
               <input
                 name="app_id"
-                placeholder="app_id or name"
+                placeholder="应用 ID 或名称"
                 value={filterAppId}
                 onChange={(event) => setFilterAppId(event.target.value)}
               />
             </label>
             <label>
-              environment
+              环境
               <select
                 name="environment"
                 value={filterEnv}
@@ -233,9 +238,9 @@ export default function AppsPage() {
                   setFilterEnv(event.target.value as "all" | App["env"])
                 }
               >
-                <option value="all">all</option>
-                <option value="prod">prod</option>
-                <option value="staging">staging</option>
+                <option value="all">全部</option>
+                <option value="prod">{ENV_LABELS.prod}</option>
+                <option value="staging">{ENV_LABELS.staging}</option>
               </select>
             </label>
             <button
@@ -246,7 +251,7 @@ export default function AppsPage() {
                 setFilterEnv("all");
               }}
             >
-              reset
+              重置
             </button>
           </form>
         </div>
@@ -255,12 +260,12 @@ export default function AppsPage() {
           <table>
             <thead>
               <tr>
-                <th>name</th>
-                <th>app_id</th>
-                <th>environment</th>
-                <th>status</th>
-                <th>created_at</th>
-                <th>actions</th>
+                <th>名称</th>
+                <th>应用 ID</th>
+                <th>环境</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -268,9 +273,11 @@ export default function AppsPage() {
                 <tr key={app.id}>
                   <td>{app.name}</td>
                   <td>{app.app_id}</td>
-                  <td>{app.env}</td>
+                  <td>{ENV_LABELS[app.env] ?? app.env}</td>
                   <td>
-                    <span className={statusClass(app.status)}>{app.status}</span>
+                    <span className={statusClass(app.status)}>
+                      {app.status === "active" ? "启用" : "禁用"}
+                    </span>
                   </td>
                   <td>{app.created_at}</td>
                   <td>
@@ -280,28 +287,28 @@ export default function AppsPage() {
                         type="button"
                         onClick={() => handleToggleStatus(app)}
                       >
-                        {app.status === "active" ? "disable" : "enable"}
+                        {app.status === "active" ? "禁用" : "启用"}
                       </button>
                       <button
                         className="ghost small"
                         type="button"
                         onClick={() => handleCopy(app.app_id, "app_id")}
                       >
-                        copy_app_id
+                        复制 app_id
                       </button>
                       <button
                         className="ghost small"
                         type="button"
                         onClick={() => handleCopy(app.app_key, "app_key")}
                       >
-                        copy_app_key
+                        复制 app_key
                       </button>
                       <button
                         className="ghost small"
                         type="button"
                         onClick={() => handleDelete(app)}
                       >
-                        delete
+                        删除
                       </button>
                     </div>
                   </td>
@@ -309,7 +316,7 @@ export default function AppsPage() {
               ))}
               {!filteredApps.length && !loading && (
                 <tr>
-                  <td colSpan={6}>No apps found.</td>
+                  <td colSpan={6}>未找到应用。</td>
                 </tr>
               )}
             </tbody>
@@ -326,16 +333,16 @@ export default function AppsPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>{createdSecrets ? "app_credentials" : "create_app"}</h3>
+              <h3>{createdSecrets ? "应用凭证" : "新建应用"}</h3>
               <button className="ghost small" type="button" onClick={closeCreate}>
-                close
+                关闭
               </button>
             </div>
             <div className="modal-body">
               {createdSecrets ? (
                 <>
                   <p className="form-hint">
-                    Store these credentials now. They will only be shown once.
+                    请立即保存这些凭证，仅显示一次。
                   </p>
                   <div className="key-row">
                     <div>
@@ -349,7 +356,7 @@ export default function AppsPage() {
                         handleCopy(createdSecrets.app_id, "app_id")
                       }
                     >
-                      copy
+                      复制
                     </button>
                   </div>
                   <div className="key-row">
@@ -364,22 +371,22 @@ export default function AppsPage() {
                         handleCopy(createdSecrets.app_key, "app_key")
                       }
                     >
-                      copy
+                      复制
                     </button>
                   </div>
                   <div className="modal-actions">
                     <button className="primary" type="button" onClick={closeCreate}>
-                      done
+                      完成
                     </button>
                   </div>
                 </>
               ) : (
                 <form className="stack-form" onSubmit={handleCreate}>
                   <label>
-                    name
+                    名称
                     <input
                       name="name"
-                      placeholder="App display name"
+                      placeholder="应用显示名称"
                       value={createForm.name}
                       onChange={(event) =>
                         setCreateForm((prev) => ({
@@ -390,7 +397,7 @@ export default function AppsPage() {
                     />
                   </label>
                   <label>
-                    env
+                    环境
                     <select
                       name="env"
                       value={createForm.env}
@@ -401,16 +408,16 @@ export default function AppsPage() {
                         }))
                       }
                     >
-                      <option value="prod">prod</option>
-                      <option value="staging">staging</option>
+                      <option value="prod">{ENV_LABELS.prod}</option>
+                      <option value="staging">{ENV_LABELS.staging}</option>
                     </select>
                   </label>
                   <div className="modal-actions">
                     <button className="ghost" type="button" onClick={closeCreate}>
-                      cancel
+                      取消
                     </button>
                     <button className="primary" type="submit">
-                      create
+                      新建
                     </button>
                   </div>
                 </form>

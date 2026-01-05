@@ -92,7 +92,7 @@ export default function VariantsPage() {
         setApps(seedApps);
         setPlacements(seedPlacements);
         setVariants(seedVariants);
-        setError("API unavailable. Showing mock variants.");
+        setError("API 不可用，显示模拟变体。");
       } else {
         setError(getErrorMessage(loadError));
       }
@@ -178,7 +178,7 @@ export default function VariantsPage() {
             variant.id === target.id ? { ...variant, enabled: nextEnabled } : variant
           )
         );
-        setError("API unavailable. Updated variant locally.");
+        setError("API 不可用，已在本地更新变体。");
       } else {
         setError(getErrorMessage(updateError));
       }
@@ -186,7 +186,7 @@ export default function VariantsPage() {
   };
 
   const handleDelete = async (target: Variant) => {
-    if (!window.confirm(`Delete variant ${target.id}?`)) {
+    if (!window.confirm(`确认删除变体 ${target.id}？`)) {
       return;
     }
     setError(null);
@@ -196,7 +196,7 @@ export default function VariantsPage() {
     } catch (deleteError) {
       if (shouldUseFallback(deleteError)) {
         setVariants((prev) => prev.filter((variant) => variant.id !== target.id));
-        setError("API unavailable. Deleted variant locally.");
+        setError("API 不可用，已在本地删除变体。");
       } else {
         setError(getErrorMessage(deleteError));
       }
@@ -224,7 +224,7 @@ export default function VariantsPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form.app_id || !form.placement_id || !form.package_id.trim()) {
-      setError("app_id, placement_id, and package_id are required.");
+      setError("app_id、placement_id 和 package_id 为必填。");
       return;
     }
 
@@ -281,7 +281,7 @@ export default function VariantsPage() {
         );
         setModalOpen(false);
         setEditingVariant(null);
-        setError("API unavailable. Saved variant locally.");
+        setError("API 不可用，已在本地保存变体。");
       } else {
         setError(getErrorMessage(saveError));
       }
@@ -296,44 +296,44 @@ export default function VariantsPage() {
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={openCreate}>
-          create_variant
+          新建变体
         </button>
         <button className="ghost" type="button" onClick={loadData}>
-          refresh
+          刷新
         </button>
       </div>
 
-      {loading && <div className="banner">loading variants...</div>}
+      {loading && <div className="banner">正在加载变体...</div>}
       {error && <div className="banner error">{error}</div>}
 
       <div className="card-grid two">
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>offering_config</h3>
-              <p>Preview offering_id and product_ids order.</p>
+              <h3>产品配置</h3>
+              <p>预览 offering_id 与 product_ids 顺序。</p>
             </div>
           </div>
           {highlightedVariant ? (
             <div className="chip-list">
-              <span>variant_id: {highlightedVariant.id}</span>
-              <span>offering_id: {highlightedVariant.offering_id || "-"}</span>
-              <span>package_id: {highlightedVariant.package_id}</span>
+              <span>变体 ID：{highlightedVariant.id}</span>
+              <span>Offering ID：{highlightedVariant.offering_id || "-"}</span>
+              <span>包 ID：{highlightedVariant.package_id}</span>
               {highlightedVariant.product_ids.map((productId) => (
                 <span key={`${highlightedVariant.id}-${productId}`}>
-                  product_id: {productId}
+                  产品 ID：{productId}
                 </span>
               ))}
             </div>
           ) : (
-            <p className="form-hint">No variants yet. Create one to preview.</p>
+            <p className="form-hint">暂无变体，先创建后预览。</p>
           )}
         </div>
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>page_options</h3>
-              <p>Payload sent to client on render.</p>
+              <h3>页面参数</h3>
+              <p>渲染时下发给客户端的参数。</p>
             </div>
           </div>
           <pre className="code-block">
@@ -345,18 +345,18 @@ export default function VariantsPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>variant_list</h3>
-            <p>Enabled variants and package bindings.</p>
+            <h3>变体列表</h3>
+            <p>启用的变体与包绑定关系。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              app_id
+              应用 ID
               <select
                 name="app_id"
                 value={filterAppId}
                 onChange={(event) => setFilterAppId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {apps.map((app) => (
                   <option key={app.app_id} value={app.app_id}>
                     {app.app_id}
@@ -365,13 +365,13 @@ export default function VariantsPage() {
               </select>
             </label>
             <label>
-              placement_id
+              投放位 ID
               <select
                 name="placement_id"
                 value={filterPlacementId}
                 onChange={(event) => setFilterPlacementId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {filteredPlacements.map((placement) => (
                   <option key={placement.placement_id} value={placement.placement_id}>
                     {placement.placement_id}
@@ -387,7 +387,7 @@ export default function VariantsPage() {
                 setFilterPlacementId("");
               }}
             >
-              reset
+              重置
             </button>
           </form>
         </div>
@@ -396,17 +396,17 @@ export default function VariantsPage() {
           <table>
             <thead>
               <tr>
-                <th>variant_id</th>
-                <th>app_id</th>
-                <th>placement_id</th>
-                <th>package_id</th>
-                <th>offering_id</th>
-                <th>product_ids</th>
-                <th>priority</th>
-                <th>enabled</th>
-                <th>page_options</th>
-                <th>created_at</th>
-                <th>actions</th>
+                <th>变体 ID</th>
+                <th>应用 ID</th>
+                <th>投放位 ID</th>
+                <th>包 ID</th>
+                <th>Offering ID</th>
+                <th>产品 ID 列表</th>
+                <th>优先级</th>
+                <th>启用</th>
+                <th>页面参数</th>
+                <th>创建时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -425,18 +425,18 @@ export default function VariantsPage() {
                         variant.enabled ? "enabled" : "disabled"
                       )}
                     >
-                      {variant.enabled ? "enabled" : "disabled"}
+                      {variant.enabled ? "已启用" : "已禁用"}
                     </span>
                   </td>
                   <td>
                     <div className="chip-list">
                       <span>
-                        success:{" "}
-                        {variant.page_options.auto_close_on_success ? "on" : "off"}
+                        成功关闭：{" "}
+                        {variant.page_options.auto_close_on_success ? "开" : "关"}
                       </span>
                       <span>
-                        restore:{" "}
-                        {variant.page_options.auto_close_on_restore ? "on" : "off"}
+                        恢复关闭：{" "}
+                        {variant.page_options.auto_close_on_restore ? "开" : "关"}
                       </span>
                     </div>
                   </td>
@@ -448,21 +448,21 @@ export default function VariantsPage() {
                         type="button"
                         onClick={() => openEdit(variant)}
                       >
-                        edit
+                        编辑
                       </button>
                       <button
                         className="ghost small"
                         type="button"
                         onClick={() => handleToggleEnabled(variant)}
                       >
-                        {variant.enabled ? "disable" : "enable"}
+                        {variant.enabled ? "禁用" : "启用"}
                       </button>
                       <button
                         className="ghost small"
                         type="button"
                         onClick={() => handleDelete(variant)}
                       >
-                        delete
+                        删除
                       </button>
                     </div>
                   </td>
@@ -470,7 +470,7 @@ export default function VariantsPage() {
               ))}
               {!filteredVariants.length && !loading && (
                 <tr>
-                  <td colSpan={11}>No variants found.</td>
+                  <td colSpan={11}>未找到变体。</td>
                 </tr>
               )}
             </tbody>
@@ -487,21 +487,21 @@ export default function VariantsPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>{editingVariant ? "edit_variant" : "create_variant"}</h3>
+              <h3>{editingVariant ? "编辑变体" : "新建变体"}</h3>
               <button className="ghost small" type="button" onClick={closeModal}>
-                close
+                关闭
               </button>
             </div>
             <div className="modal-body">
               <form className="stack-form" onSubmit={handleSubmit}>
                 <label>
-                  app_id
+                  应用 ID
                   <select
                     name="app_id"
                     value={form.app_id}
                     onChange={(event) => handleFormAppChange(event.target.value)}
                   >
-                    <option value="">select_app</option>
+                    <option value="">选择应用</option>
                     {apps.map((app) => (
                       <option key={app.app_id} value={app.app_id}>
                         {app.app_id}
@@ -510,7 +510,7 @@ export default function VariantsPage() {
                   </select>
                 </label>
                 <label>
-                  placement_id
+                  投放位 ID
                   <select
                     name="placement_id"
                     value={form.placement_id}
@@ -521,7 +521,7 @@ export default function VariantsPage() {
                       }))
                     }
                   >
-                    <option value="">select_placement</option>
+                    <option value="">选择投放位</option>
                     {formPlacements.map((placement) => (
                       <option key={placement.placement_id} value={placement.placement_id}>
                         {placement.placement_id}
@@ -530,7 +530,7 @@ export default function VariantsPage() {
                   </select>
                 </label>
                 <label>
-                  package_id
+                  包 ID
                   <input
                     name="package_id"
                     placeholder="pkg_001"
@@ -544,7 +544,7 @@ export default function VariantsPage() {
                   />
                 </label>
                 <label>
-                  offering_id
+                  Offering ID
                   <input
                     name="offering_id"
                     placeholder="offer_promo"
@@ -558,7 +558,7 @@ export default function VariantsPage() {
                   />
                 </label>
                 <label>
-                  product_ids
+                  产品 ID 列表
                   <textarea
                     name="product_ids"
                     placeholder="prod_trial, prod_annual"
@@ -572,10 +572,10 @@ export default function VariantsPage() {
                   />
                 </label>
                 <p className="form-hint">
-                  Enter multiple product_ids separated by commas or new lines.
+                  product_ids 可用逗号或换行分隔。
                 </p>
                 <label>
-                  priority
+                  优先级
                   <input
                     name="priority"
                     type="number"
@@ -600,10 +600,10 @@ export default function VariantsPage() {
                       }))
                     }
                   />
-                  enabled
+                  启用
                 </label>
                 <div>
-                  <div className="form-hint">page_options</div>
+                  <div className="form-hint">页面参数</div>
                   <label className="checkbox-row">
                     <input
                       name="auto_close_on_success"
@@ -616,7 +616,7 @@ export default function VariantsPage() {
                         }))
                       }
                     />
-                    auto_close_on_success
+                    购买成功自动关闭
                   </label>
                   <label className="checkbox-row">
                     <input
@@ -630,15 +630,15 @@ export default function VariantsPage() {
                         }))
                       }
                     />
-                    auto_close_on_restore
+                    恢复购买自动关闭
                   </label>
                 </div>
                 <div className="modal-actions">
                   <button className="ghost" type="button" onClick={closeModal}>
-                    cancel
+                    取消
                   </button>
                   <button className="primary" type="submit">
-                    {editingVariant ? "save" : "create"}
+                    {editingVariant ? "保存" : "新建"}
                   </button>
                 </div>
               </form>

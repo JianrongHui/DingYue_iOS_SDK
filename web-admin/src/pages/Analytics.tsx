@@ -2,29 +2,38 @@ import { forwarding, funnels } from "../data/mock_data";
 
 const statusClass = (status: string) => `status status-${status}`;
 
+const FORWARDING_STATUS_LABELS: Record<string, string> = {
+  healthy: "正常",
+  warning: "告警",
+  failed: "失败"
+};
+
+const formatForwardingStatus = (status: string) =>
+  FORWARDING_STATUS_LABELS[status] ?? status;
+
 export default function AnalyticsPage() {
   return (
     <section className="page">
       <div className="section-actions">
-        <button className="primary">refresh_reports</button>
-        <button className="ghost">export_csv</button>
+        <button className="primary">刷新报表</button>
+        <button className="ghost">导出 CSV</button>
       </div>
 
       <div className="card-grid two">
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>funnel_analysis</h3>
-              <p>Conversion rates across multi-step journeys.</p>
+              <h3>漏斗分析</h3>
+              <p>多步骤路径转化率。</p>
             </div>
           </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>funnel_name</th>
-                  <th>steps</th>
-                  <th>conversion_rate</th>
+                  <th>漏斗名称</th>
+                  <th>步骤</th>
+                  <th>转化率</th>
                 </tr>
               </thead>
               <tbody>
@@ -42,18 +51,18 @@ export default function AnalyticsPage() {
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>forwarding_status</h3>
-              <p>Analytics integration health and failure logs.</p>
+              <h3>转发状态</h3>
+              <p>分析接入健康度与失败日志。</p>
             </div>
           </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>provider</th>
-                  <th>status</th>
-                  <th>last_success_at</th>
-                  <th>failure_count</th>
+                  <th>提供方</th>
+                  <th>状态</th>
+                  <th>最近成功时间</th>
+                  <th>失败次数</th>
                 </tr>
               </thead>
               <tbody>
@@ -62,7 +71,7 @@ export default function AnalyticsPage() {
                     <td>{item.provider}</td>
                     <td>
                       <span className={statusClass(item.status)}>
-                        {item.status}
+                        {formatForwardingStatus(item.status)}
                       </span>
                     </td>
                     <td>{item.last_success_at}</td>
@@ -78,14 +87,14 @@ export default function AnalyticsPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>mapping_review</h3>
-            <p>Review GA4/Firebase event mapping coverage.</p>
+            <h3>映射检查</h3>
+            <p>查看 GA4/Firebase 事件映射覆盖情况。</p>
           </div>
         </div>
         <div className="chip-list">
-          <span>mapping_group: core_events</span>
-          <span>mapped_events: 22</span>
-          <span>unmapped_events: 4</span>
+          <span>映射组：核心事件</span>
+          <span>已映射事件：22</span>
+          <span>未映射事件：4</span>
         </div>
       </div>
     </section>

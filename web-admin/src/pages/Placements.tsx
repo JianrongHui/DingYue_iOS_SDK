@@ -14,6 +14,13 @@ import { generateId } from "../utils/storage";
 
 const statusClass = (status: string) => `status status-${status}`;
 
+const TYPE_LABELS: Record<Placement["type"], string> = {
+  guide: "引导",
+  paywall: "付费墙"
+};
+
+const formatPlacementType = (value: Placement["type"]) => TYPE_LABELS[value] ?? value;
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function PlacementsPage() {
@@ -47,7 +54,7 @@ export default function PlacementsPage() {
         setApps(seedApps);
         setPlacements(seedPlacements);
         setVariants(seedVariants);
-        setError("API unavailable. Showing mock placements.");
+        setError("API 不可用，显示模拟投放位。");
       } else {
         setError(getErrorMessage(loadError));
       }
@@ -88,7 +95,7 @@ export default function PlacementsPage() {
               : placement
           )
         );
-        setError("API unavailable. Updated placement locally.");
+        setError("API 不可用，已在本地更新投放位。");
       } else {
         setError(getErrorMessage(updateError));
       }
@@ -96,7 +103,7 @@ export default function PlacementsPage() {
   };
 
   const handleDelete = async (target: Placement) => {
-    if (!window.confirm(`Delete placement ${target.placement_id}?`)) {
+    if (!window.confirm(`确认删除投放位 ${target.placement_id}？`)) {
       return;
     }
     setError(null);
@@ -110,7 +117,7 @@ export default function PlacementsPage() {
         setPlacements((prev) =>
           prev.filter((placement) => placement.id !== target.id)
         );
-        setError("API unavailable. Deleted placement locally.");
+        setError("API 不可用，已在本地删除投放位。");
       } else {
         setError(getErrorMessage(deleteError));
       }
@@ -141,7 +148,7 @@ export default function PlacementsPage() {
               : placement
           )
         );
-        setError("API unavailable. Updated default variant locally.");
+        setError("API 不可用，已在本地更新默认变体。");
       } else {
         setError(getErrorMessage(updateError));
       }
@@ -163,15 +170,15 @@ export default function PlacementsPage() {
     event.preventDefault();
     const placementId = createForm.placement_id.trim();
     if (!createForm.app_id) {
-      setError("Select an app_id for the placement.");
+      setError("请选择投放位所属的应用。");
       return;
     }
     if (!placementId) {
-      setError("placement_id is required.");
+      setError("placement_id 为必填。");
       return;
     }
     if (placements.some((placement) => placement.placement_id === placementId)) {
-      setError("placement_id already exists.");
+      setError("placement_id 已存在。");
       return;
     }
 
@@ -198,7 +205,7 @@ export default function PlacementsPage() {
         };
         setPlacements((prev) => [newPlacement, ...prev]);
         setCreateOpen(false);
-        setError("API unavailable. Created placement locally.");
+        setError("API 不可用，已在本地创建投放位。");
       } else {
         setError(getErrorMessage(createError));
       }
@@ -209,31 +216,31 @@ export default function PlacementsPage() {
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={openCreate}>
-          create_placement
+          新建投放位
         </button>
         <button className="ghost" type="button" onClick={loadData}>
-          refresh
+          刷新
         </button>
       </div>
 
-      {loading && <div className="banner">loading placements...</div>}
+      {loading && <div className="banner">正在加载投放位...</div>}
       {error && <div className="banner error">{error}</div>}
 
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>placement_list</h3>
-            <p>Enable placements and manage default variants.</p>
+            <h3>投放位列表</h3>
+            <p>启用投放位并管理默认变体。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              app_id
+              应用 ID
               <select
                 name="app_id"
                 value={filterAppId}
                 onChange={(event) => setFilterAppId(event.target.value)}
               >
-                <option value="all">all</option>
+                <option value="all">全部</option>
                 {apps.map((app) => (
                   <option key={app.app_id} value={app.app_id}>
                     {app.app_id}
@@ -246,7 +253,7 @@ export default function PlacementsPage() {
               type="button"
               onClick={() => setFilterAppId("all")}
             >
-              reset
+              重置
             </button>
           </form>
         </div>
@@ -255,13 +262,13 @@ export default function PlacementsPage() {
           <table>
             <thead>
               <tr>
-                <th>placement_id</th>
-                <th>type</th>
-                <th>enabled</th>
-                <th>default_variant</th>
-                <th>app_id</th>
-                <th>created_at</th>
-                <th>actions</th>
+                <th>投放位 ID</th>
+                <th>类型</th>
+                <th>启用</th>
+                <th>默认变体</th>
+                <th>应用 ID</th>
+                <th>创建时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -272,14 +279,14 @@ export default function PlacementsPage() {
                 return (
                   <tr key={placement.id}>
                     <td>{placement.placement_id}</td>
-                    <td>{placement.type}</td>
+                    <td>{formatPlacementType(placement.type)}</td>
                     <td>
                       <span
                         className={statusClass(
                           placement.enabled ? "enabled" : "disabled"
                         )}
                       >
-                        {placement.enabled ? "enabled" : "disabled"}
+                        {placement.enabled ? "已启用" : "已禁用"}
                       </span>
                     </td>
                     <td>
@@ -293,7 +300,7 @@ export default function PlacementsPage() {
                           )
                         }
                       >
-                        <option value="">none</option>
+                        <option value="">无</option>
                         {placementVariants.map((variant) => (
                           <option key={variant.id} value={variant.id}>
                             {variant.id}
@@ -310,14 +317,14 @@ export default function PlacementsPage() {
                           type="button"
                           onClick={() => handleToggleEnabled(placement)}
                         >
-                          {placement.enabled ? "disable" : "enable"}
+                          {placement.enabled ? "禁用" : "启用"}
                         </button>
                         <button
                           className="ghost small"
                           type="button"
                           onClick={() => handleDelete(placement)}
                         >
-                          delete
+                          删除
                         </button>
                       </div>
                     </td>
@@ -326,7 +333,7 @@ export default function PlacementsPage() {
               })}
               {!filteredPlacements.length && !loading && (
                 <tr>
-                  <td colSpan={7}>No placements found.</td>
+                  <td colSpan={7}>未找到投放位。</td>
                 </tr>
               )}
             </tbody>
@@ -343,15 +350,15 @@ export default function PlacementsPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>create_placement</h3>
+              <h3>新建投放位</h3>
               <button className="ghost small" type="button" onClick={closeCreate}>
-                close
+                关闭
               </button>
             </div>
             <div className="modal-body">
               <form className="stack-form" onSubmit={handleCreate}>
                 <label>
-                  app_id
+                  应用 ID
                   <select
                     name="app_id"
                     value={createForm.app_id}
@@ -362,7 +369,7 @@ export default function PlacementsPage() {
                       }))
                     }
                   >
-                    <option value="">select_app</option>
+                    <option value="">选择应用</option>
                     {apps.map((app) => (
                       <option key={app.app_id} value={app.app_id}>
                         {app.app_id}
@@ -371,7 +378,7 @@ export default function PlacementsPage() {
                   </select>
                 </label>
                 <label>
-                  placement_id
+                  投放位 ID
                   <input
                     name="placement_id"
                     placeholder="plc_001"
@@ -385,7 +392,7 @@ export default function PlacementsPage() {
                   />
                 </label>
                 <label>
-                  type
+                  类型
                   <select
                     name="type"
                     value={createForm.type}
@@ -396,16 +403,16 @@ export default function PlacementsPage() {
                       }))
                     }
                   >
-                    <option value="guide">guide</option>
-                    <option value="paywall">paywall</option>
+                    <option value="guide">引导</option>
+                    <option value="paywall">付费墙</option>
                   </select>
                 </label>
                 <div className="modal-actions">
                   <button className="ghost" type="button" onClick={closeCreate}>
-                    cancel
+                    取消
                   </button>
                   <button className="primary" type="submit">
-                    create
+                    新建
                   </button>
                 </div>
               </form>

@@ -378,12 +378,12 @@ const manifest = JSON.parse(new TextDecoder().decode(manifestData));
 #### 6.2 环境变量配置
 **新建文件**: `web-admin/.env.production`
 ```
-VITE_API_BASE_URL=https://dingyue-sdk-api.<your-subdomain>.workers.dev
+VITE_API_BASE_URL=https://configapi.calmwaveapp.com
 ```
 
 可选：限制管理后台跨域来源
 ```
-CORS_ALLOWED_ORIGINS=https://admin.<your-subdomain>.pages.dev
+CORS_ALLOWED_ORIGINS=https://configadmin.calmwaveapp.com
 ```
 
 ---

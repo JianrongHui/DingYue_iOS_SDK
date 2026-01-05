@@ -30,6 +30,13 @@ type ExperimentFormState = {
 
 const statusClass = (status: ExperimentStatus) => `status status-${status}`;
 
+const STATUS_LABELS: Record<ExperimentStatus, string> = {
+  draft: "草稿",
+  running: "运行中",
+  paused: "已暂停",
+  ended: "已结束"
+};
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 const buildShortId = (prefix: string) => {
@@ -207,7 +214,7 @@ export default function ExperimentsPage() {
         setPlacements(seedPlacements);
         setVariants(seedVariants);
         setExperiments(seedExperiments);
-        setError("API unavailable. Showing mock experiments.");
+        setError("API 不可用，显示模拟实验。");
       } else {
         setError(getErrorMessage(loadError));
       }
@@ -419,15 +426,15 @@ export default function ExperimentsPage() {
     event.preventDefault();
     const traffic = Number(form.traffic);
     if (!form.app_id || !form.placement_id) {
-      setFormError("app_id and placement_id are required.");
+      setFormError("app_id 和 placement_id 为必填。");
       return;
     }
     if (Number.isNaN(traffic) || traffic < 0 || traffic > 100) {
-      setFormError("traffic must be between 0 and 100.");
+      setFormError("流量需在 0-100 之间。");
       return;
     }
     if (!form.seed.trim()) {
-      setFormError("seed is required.");
+      setFormError("随机种子为必填。");
       return;
     }
 
@@ -437,19 +444,19 @@ export default function ExperimentsPage() {
     }));
 
     if (cleanedVariants.length < 2) {
-      setFormError("At least two variants are required.");
+      setFormError("至少需要两个变体。");
       return;
     }
 
     if (cleanedVariants.some((variant) => !variant.variant_id)) {
-      setFormError("Select a variant_id for each variant.");
+      setFormError("每个变体都需要选择 variant_id。");
       return;
     }
 
     const duplicateCheck = new Set<string>();
     for (const variant of cleanedVariants) {
       if (duplicateCheck.has(variant.variant_id)) {
-        setFormError("variant_id must be unique within an experiment.");
+        setFormError("实验内的 variant_id 不能重复。");
         return;
       }
       duplicateCheck.add(variant.variant_id);
@@ -459,7 +466,7 @@ export default function ExperimentsPage() {
       getPlacementVariants(form.placement_id, variants).map((item) => item.id)
     );
     if (cleanedVariants.some((variant) => !allowedVariants.has(variant.variant_id))) {
-      setFormError("Variants must belong to the selected placement.");
+      setFormError("变体必须属于所选投放位。");
       return;
     }
 
@@ -468,7 +475,7 @@ export default function ExperimentsPage() {
       0
     );
     if (Math.abs(weightSum - 100) > 0.01) {
-      setFormError("Variant weights must sum to 100.");
+      setFormError("变体权重之和必须为 100。");
       return;
     }
 
@@ -477,7 +484,7 @@ export default function ExperimentsPage() {
         (variant) => variant.weight < 0 || variant.weight > 100
       )
     ) {
-      setFormError("Variant weights must be between 0 and 100.");
+      setFormError("变体权重需在 0-100 之间。");
       return;
     }
 
@@ -537,7 +544,7 @@ export default function ExperimentsPage() {
         setModalOpen(false);
         setEditingExperiment(null);
         setFormError(null);
-        setError("API unavailable. Saved experiment locally.");
+        setError("API 不可用，已在本地保存实验。");
       } else {
         setFormError(getErrorMessage(saveError));
       }
@@ -569,7 +576,7 @@ export default function ExperimentsPage() {
             experiment.id === target.id ? { ...experiment, ...updates } : experiment
           )
         );
-        setError("API unavailable. Updated experiment locally.");
+        setError("API 不可用，已在本地更新实验。");
       } else {
         setError(getErrorMessage(updateError));
       }
@@ -612,7 +619,7 @@ export default function ExperimentsPage() {
   };
 
   const handleDelete = async (target: Experiment) => {
-    if (!window.confirm(`Delete experiment ${target.id}?`)) {
+    if (!window.confirm(`确认删除实验 ${target.id}？`)) {
       return;
     }
     setError(null);
@@ -626,7 +633,7 @@ export default function ExperimentsPage() {
         setExperiments((prev) =>
           prev.filter((experiment) => experiment.id !== target.id)
         );
-        setError("API unavailable. Deleted experiment locally.");
+        setError("API 不可用，已在本地删除实验。");
       } else {
         setError(getErrorMessage(deleteError));
       }
@@ -637,27 +644,27 @@ export default function ExperimentsPage() {
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={openCreate}>
-          create_experiment
+          新建实验
         </button>
         <button className="ghost" type="button" onClick={loadData}>
-          refresh
+          刷新
         </button>
       </div>
 
-      {loading && <div className="banner">loading experiments...</div>}
+      {loading && <div className="banner">正在加载实验...</div>}
       {error && <div className="banner error">{error}</div>}
 
       <div className="card-grid">
         <div className="card">
-          <div className="card-label">running_experiments</div>
+          <div className="card-label">运行中实验</div>
           <div className="card-value">{summary.running}</div>
         </div>
         <div className="card">
-          <div className="card-label">paused_experiments</div>
+          <div className="card-label">已暂停实验</div>
           <div className="card-value">{summary.paused}</div>
         </div>
         <div className="card">
-          <div className="card-label">avg_traffic</div>
+          <div className="card-label">平均流量占比</div>
           <div className="card-value">{summary.averageTraffic}%</div>
         </div>
       </div>
@@ -666,17 +673,17 @@ export default function ExperimentsPage() {
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>experiment_stats</h3>
-              <p>Simulated exposure and conversion per variant.</p>
+              <h3>实验统计</h3>
+              <p>模拟各变体的曝光与转化。</p>
             </div>
             <label>
-              experiment_id
+              实验 ID
               <select
                 className="table-select"
                 value={selectedExperimentId ?? ""}
                 onChange={(event) => setSelectedExperimentId(event.target.value)}
               >
-                <option value="">select_experiment</option>
+                <option value="">选择实验</option>
                 {filteredExperiments.map((experiment) => (
                   <option key={experiment.id} value={experiment.id}>
                     {experiment.id}
@@ -690,11 +697,11 @@ export default function ExperimentsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>variant_id</th>
-                    <th>weight</th>
-                    <th>impressions</th>
-                    <th>conversions</th>
-                    <th>conversion_rate</th>
+                    <th>变体 ID</th>
+                    <th>权重</th>
+                    <th>曝光</th>
+                    <th>转化</th>
+                    <th>转化率</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -713,21 +720,21 @@ export default function ExperimentsPage() {
               </table>
             </div>
           ) : (
-            <p className="form-hint">Select an experiment to review stats.</p>
+            <p className="form-hint">选择实验查看统计数据。</p>
           )}
         </div>
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>bucket_rules</h3>
-              <p>Stable bucketing for A/B traffic allocation.</p>
+              <h3>分桶规则</h3>
+              <p>A/B 流量分配的稳定分桶规则。</p>
             </div>
           </div>
           <ul className="stack-list">
-            <li>traffic: 0-100 percentage of users entering the experiment</li>
+            <li>流量：0-100，进入实验的用户占比</li>
             <li>bucket = hash(seed + user_id) % 100</li>
-            <li>bucket &gt;= traffic uses default variant</li>
-            <li>bucket &lt; traffic uses weighted variants</li>
+            <li>bucket &gt;= traffic 使用默认变体</li>
+            <li>bucket &lt; traffic 按权重使用变体</li>
           </ul>
         </div>
       </div>
@@ -735,18 +742,18 @@ export default function ExperimentsPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>experiment_list</h3>
-            <p>Traffic split, seed, and variant weights.</p>
+            <h3>实验列表</h3>
+            <p>展示流量分配、随机种子与变体权重。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              app_id
+              应用 ID
               <select
                 name="app_id"
                 value={filterAppId}
                 onChange={(event) => setFilterAppId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {apps.map((app) => (
                   <option key={app.app_id} value={app.app_id}>
                     {app.app_id}
@@ -755,13 +762,13 @@ export default function ExperimentsPage() {
               </select>
             </label>
             <label>
-              placement_id
+              投放位 ID
               <select
                 name="placement_id"
                 value={filterPlacementId}
                 onChange={(event) => setFilterPlacementId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {filteredPlacements.map((placement) => (
                   <option
                     key={placement.placement_id}
@@ -773,7 +780,7 @@ export default function ExperimentsPage() {
               </select>
             </label>
             <label>
-              status
+              状态
               <select
                 name="status"
                 value={filterStatus}
@@ -781,11 +788,11 @@ export default function ExperimentsPage() {
                   setFilterStatus(event.target.value as "all" | ExperimentStatus)
                 }
               >
-                <option value="all">all</option>
-                <option value="draft">draft</option>
-                <option value="running">running</option>
-                <option value="paused">paused</option>
-                <option value="ended">ended</option>
+                <option value="all">全部</option>
+                <option value="draft">{STATUS_LABELS.draft}</option>
+                <option value="running">{STATUS_LABELS.running}</option>
+                <option value="paused">{STATUS_LABELS.paused}</option>
+                <option value="ended">{STATUS_LABELS.ended}</option>
               </select>
             </label>
             <button
@@ -797,7 +804,7 @@ export default function ExperimentsPage() {
                 setFilterStatus("all");
               }}
             >
-              reset
+              重置
             </button>
           </form>
         </div>
@@ -806,15 +813,15 @@ export default function ExperimentsPage() {
           <table>
             <thead>
               <tr>
-                <th>experiment_id</th>
-                <th>app_id</th>
-                <th>placement_id</th>
-                <th>status</th>
-                <th>traffic</th>
-                <th>seed</th>
-                <th>variants</th>
-                <th>created_at</th>
-                <th>actions</th>
+                <th>实验 ID</th>
+                <th>应用 ID</th>
+                <th>投放位 ID</th>
+                <th>状态</th>
+                <th>流量</th>
+                <th>种子</th>
+                <th>变体</th>
+                <th>创建时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -830,7 +837,7 @@ export default function ExperimentsPage() {
                     <td>{experiment.placement_id}</td>
                     <td>
                       <span className={statusClass(experiment.status)}>
-                        {experiment.status}
+                        {STATUS_LABELS[experiment.status]}
                       </span>
                     </td>
                     <td>{experiment.traffic}%</td>
@@ -852,10 +859,10 @@ export default function ExperimentsPage() {
                           disabled={!canEdit}
                           onClick={() => openEdit(experiment)}
                           title={
-                            canEdit ? "" : "Only draft/paused experiments can be edited"
+                            canEdit ? "" : "仅草稿/暂停的实验可编辑"
                           }
                         >
-                          edit
+                          编辑
                         </button>
                         <button
                           className="ghost small"
@@ -863,7 +870,7 @@ export default function ExperimentsPage() {
                           disabled={experiment.status !== "draft"}
                           onClick={() => handleStart(experiment)}
                         >
-                          start
+                          启动
                         </button>
                         <button
                           className="ghost small"
@@ -871,7 +878,7 @@ export default function ExperimentsPage() {
                           disabled={experiment.status !== "running"}
                           onClick={() => handlePause(experiment)}
                         >
-                          pause
+                          暂停
                         </button>
                         <button
                           className="ghost small"
@@ -879,7 +886,7 @@ export default function ExperimentsPage() {
                           disabled={experiment.status !== "paused"}
                           onClick={() => handleResume(experiment)}
                         >
-                          resume
+                          继续
                         </button>
                         <button
                           className="ghost small"
@@ -887,7 +894,7 @@ export default function ExperimentsPage() {
                           disabled={experiment.status === "ended"}
                           onClick={() => handleEnd(experiment)}
                         >
-                          end
+                          结束
                         </button>
                         <button
                           className="ghost small"
@@ -897,10 +904,10 @@ export default function ExperimentsPage() {
                           title={
                             canDelete
                               ? ""
-                              : "Only draft/ended experiments can be deleted"
+                              : "仅草稿/已结束的实验可删除"
                           }
                         >
-                          delete
+                          删除
                         </button>
                       </div>
                     </td>
@@ -909,7 +916,7 @@ export default function ExperimentsPage() {
               })}
               {!filteredExperiments.length && !loading && (
                 <tr>
-                  <td colSpan={9}>No experiments found.</td>
+                  <td colSpan={9}>未找到实验。</td>
                 </tr>
               )}
             </tbody>
@@ -926,22 +933,22 @@ export default function ExperimentsPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>{editingExperiment ? "edit_experiment" : "create_experiment"}</h3>
+              <h3>{editingExperiment ? "编辑实验" : "新建实验"}</h3>
               <button className="ghost small" type="button" onClick={closeModal}>
-                close
+                关闭
               </button>
             </div>
             <div className="modal-body">
               {formError && <div className="banner error">{formError}</div>}
               <form className="stack-form" onSubmit={handleSubmit}>
                 <label>
-                  app_id
+                  应用 ID
                   <select
                     name="app_id"
                     value={form.app_id}
                     onChange={(event) => handleFormAppChange(event.target.value)}
                   >
-                    <option value="">select_app</option>
+                    <option value="">选择应用</option>
                     {apps.map((app) => (
                       <option key={app.app_id} value={app.app_id}>
                         {app.app_id}
@@ -950,13 +957,13 @@ export default function ExperimentsPage() {
                   </select>
                 </label>
                 <label>
-                  placement_id
+                  投放位 ID
                   <select
                     name="placement_id"
                     value={form.placement_id}
                     onChange={(event) => handleFormPlacementChange(event.target.value)}
                   >
-                    <option value="">select_placement</option>
+                    <option value="">选择投放位</option>
                     {formPlacements.map((placement) => (
                       <option
                         key={placement.placement_id}
@@ -968,7 +975,7 @@ export default function ExperimentsPage() {
                   </select>
                 </label>
                 <label>
-                  traffic
+                  流量占比
                   <input
                     name="traffic"
                     type="number"
@@ -984,7 +991,7 @@ export default function ExperimentsPage() {
                   />
                 </label>
                 <label>
-                  seed
+                  随机种子
                   <input
                     name="seed"
                     value={form.seed}
@@ -1000,21 +1007,21 @@ export default function ExperimentsPage() {
                     setForm((prev) => ({ ...prev, seed: buildSeed() }))
                   }
                 >
-                  regenerate_seed
+                  重新生成种子
                 </button>
 
                 <div>
-                  <div className="card-label">variants</div>
+                  <div className="card-label">变体</div>
                   <p className="form-hint">
-                    Add at least two variants. Total weight must equal 100.
+                    至少添加两个变体，总权重需等于 100。
                   </p>
                   <div className="table-wrap">
                     <table>
                       <thead>
                         <tr>
-                          <th>variant_id</th>
-                          <th>weight</th>
-                          <th>actions</th>
+                          <th>变体 ID</th>
+                          <th>权重</th>
+                          <th>操作</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1032,7 +1039,7 @@ export default function ExperimentsPage() {
                                   )
                                 }
                               >
-                                <option value="">select_variant</option>
+                                <option value="">选择变体</option>
                                 {formPlacementVariants.map((option) => {
                                   const isSelectedElsewhere = form.variants.some(
                                     (item, itemIndex) =>
@@ -1074,7 +1081,7 @@ export default function ExperimentsPage() {
                                 disabled={form.variants.length <= 2}
                                 onClick={() => handleRemoveVariant(index)}
                               >
-                                remove
+                                移除
                               </button>
                             </td>
                           </tr>
@@ -1082,23 +1089,23 @@ export default function ExperimentsPage() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="form-hint">total_weight: {totalWeight}%</div>
+                  <div className="form-hint">总权重：{totalWeight}%</div>
                   {!formPlacementVariants.length && (
                     <div className="banner">
-                      No variants found for this placement. Create variants first.
+                      该投放位暂无变体，请先创建变体。
                     </div>
                   )}
                   <button className="ghost" type="button" onClick={handleAddVariant}>
-                    add_variant
+                    添加变体
                   </button>
                 </div>
 
                 <div className="modal-actions">
                   <button className="ghost" type="button" onClick={closeModal}>
-                    cancel
+                    取消
                   </button>
                   <button className="primary" type="submit">
-                    {editingExperiment ? "save" : "create"}
+                    {editingExperiment ? "保存" : "新建"}
                   </button>
                 </div>
               </form>

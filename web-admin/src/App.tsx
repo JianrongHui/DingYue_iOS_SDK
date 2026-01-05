@@ -11,7 +11,7 @@ const normalizePath = (hash: string) => {
   return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
 };
 
-const navOrder = ["Build", "Targeting", "Release", "Insights"];
+const navOrder = ["构建", "定向", "发布", "洞察"];
 
 export default function App() {
   const [path, setPath] = useState(() => normalizePath(window.location.hash));
@@ -37,8 +37,8 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark">DY</div>
           <div>
-            <div className="brand-title">DingYue Console</div>
-            <div className="brand-subtitle">web_admin</div>
+            <div className="brand-title">DingYue 控制台</div>
+            <div className="brand-subtitle">管理后台</div>
           </div>
         </div>
 
@@ -73,24 +73,24 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="pill">env: prod</div>
-          <div className="pill">region: us-east</div>
+          <div className="pill">环境：生产</div>
+          <div className="pill">区域：us-east</div>
         </div>
       </aside>
 
       <div className="main">
         <header className="topbar">
           <div className="topbar-title">
-            <div className="eyebrow">Admin Console</div>
+            <div className="eyebrow">管理后台</div>
             <h1>{activeRoute.label}</h1>
             <p>{activeRoute.description}</p>
           </div>
           <div className="topbar-actions">
             <button className="ghost" type="button">
-              sync
+              同步
             </button>
             <button className="primary" type="button">
-              create
+              新建
             </button>
           </div>
         </header>
@@ -101,8 +101,8 @@ export default function App() {
           ) : (
             <section className="page">
               <div className="card">
-                <h3>route_not_found</h3>
-                <p>Return to a valid navigation item.</p>
+                <h3>页面不存在</h3>
+                <p>请返回有效的导航入口。</p>
               </div>
             </section>
           )}

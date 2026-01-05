@@ -98,7 +98,7 @@ export default function AnalyticsSinksPage() {
       }
       setSinks(resolvedSinks);
     } catch (loadError) {
-      setError("Failed to load analytics sinks from localStorage.");
+      setError("无法从本地存储读取分析转发。");
     } finally {
       setLoading(false);
     }
@@ -113,7 +113,7 @@ export default function AnalyticsSinksPage() {
     try {
       setItems(SINKS_KEY, nextSinks);
     } catch (saveError) {
-      setError("Failed to save analytics sinks to localStorage.");
+      setError("无法保存分析转发到本地存储。");
     }
   };
 
@@ -142,7 +142,7 @@ export default function AnalyticsSinksPage() {
   };
 
   const handleDelete = (target: AnalyticsSink) => {
-    if (!window.confirm(`Delete sink ${target.id}?`)) {
+    if (!window.confirm(`确认删除转发 ${target.id}？`)) {
       return;
     }
     const nextSinks = sinks.filter((sink) => sink.id !== target.id);
@@ -151,11 +151,11 @@ export default function AnalyticsSinksPage() {
 
   const handleCopy = (value: string, label: string) => {
     if (!navigator.clipboard) {
-      setError(`Clipboard unavailable for ${label}.`);
+      setError(`剪贴板不可用，无法复制 ${label}。`);
       return;
     }
     navigator.clipboard.writeText(value).catch(() => {
-      setError(`Failed to copy ${label}.`);
+      setError(`复制 ${label} 失败。`);
     });
   };
 
@@ -186,22 +186,22 @@ export default function AnalyticsSinksPage() {
     event.preventDefault();
 
     if (!form.app_id) {
-      setError("app_id is required.");
+      setError("app_id 为必填。");
       return;
     }
 
     if (!form.api_secret.trim()) {
-      setError("api_secret is required.");
+      setError("api_secret 为必填。");
       return;
     }
 
     if (form.type === "ga4" && !form.measurement_id.trim()) {
-      setError("measurement_id is required for GA4.");
+      setError("GA4 需要 measurement_id。");
       return;
     }
 
     if (form.type === "firebase" && !form.firebase_app_id.trim()) {
-      setError("firebase app_id is required.");
+      setError("Firebase 需要 app_id。");
       return;
     }
 
@@ -246,31 +246,31 @@ export default function AnalyticsSinksPage() {
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={openCreate}>
-          create_sink
+          新建转发
         </button>
         <button className="ghost" type="button" onClick={loadData}>
-          refresh
+          刷新
         </button>
       </div>
 
-      {loading && <div className="banner">loading analytics sinks...</div>}
+      {loading && <div className="banner">正在加载分析转发...</div>}
       {error && <div className="banner error">{error}</div>}
 
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>sink_inventory</h3>
-            <p>Control GA4 and Firebase forwarding destinations per app.</p>
+            <h3>转发列表</h3>
+            <p>按应用管理 GA4/Firebase 转发目的地。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              app_id
+              应用 ID
               <select
                 name="app_id"
                 value={filterAppId}
                 onChange={(event) => setFilterAppId(event.target.value)}
               >
-                <option value="all">all</option>
+                <option value="all">全部</option>
                 {apps.map((app) => (
                   <option key={app.app_id} value={app.app_id}>
                     {app.app_id}
@@ -283,35 +283,35 @@ export default function AnalyticsSinksPage() {
               type="button"
               onClick={() => setFilterAppId("all")}
             >
-              reset
+              重置
             </button>
           </form>
         </div>
 
         <div className="chip-list">
-          <span>total: {summary.total}</span>
-          <span>enabled: {summary.enabled}</span>
-          <span>ga4: {summary.ga4}</span>
-          <span>firebase: {summary.firebase}</span>
+          <span>总数：{summary.total}</span>
+          <span>已启用：{summary.enabled}</span>
+          <span>GA4：{summary.ga4}</span>
+          <span>Firebase：{summary.firebase}</span>
         </div>
 
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>sink_id</th>
-                <th>app_id</th>
-                <th>type</th>
-                <th>config</th>
-                <th>status</th>
-                <th>updated_at</th>
-                <th>actions</th>
+                <th>转发 ID</th>
+                <th>应用 ID</th>
+                <th>类型</th>
+                <th>配置</th>
+                <th>状态</th>
+                <th>更新时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
               {filteredSinks.map((sink) => {
                 const configLabel =
-                  sink.type === "ga4" ? "measurement_id" : "firebase_app_id";
+                  sink.type === "ga4" ? "Measurement ID" : "Firebase App ID";
                 const configValue =
                   sink.type === "ga4"
                     ? sink.config.measurement_id
@@ -339,7 +339,7 @@ export default function AnalyticsSinksPage() {
                               handleCopy(sink.config.api_secret, "api_secret")
                             }
                           >
-                            copy
+                            复制
                           </button>
                         </div>
                       </div>
@@ -350,7 +350,7 @@ export default function AnalyticsSinksPage() {
                           sink.enabled ? "enabled" : "disabled"
                         )}
                       >
-                        {sink.enabled ? "enabled" : "disabled"}
+                        {sink.enabled ? "已启用" : "已禁用"}
                       </span>
                     </td>
                     <td>{sink.updated_at}</td>
@@ -361,21 +361,21 @@ export default function AnalyticsSinksPage() {
                           type="button"
                           onClick={() => openEdit(sink)}
                         >
-                          edit
+                          编辑
                         </button>
                         <button
                           className="ghost small"
                           type="button"
                           onClick={() => handleToggleEnabled(sink)}
                         >
-                          {sink.enabled ? "disable" : "enable"}
+                          {sink.enabled ? "禁用" : "启用"}
                         </button>
                         <button
                           className="ghost small"
                           type="button"
                           onClick={() => handleDelete(sink)}
                         >
-                          delete
+                          删除
                         </button>
                       </div>
                     </td>
@@ -384,7 +384,7 @@ export default function AnalyticsSinksPage() {
               })}
               {!filteredSinks.length && !loading && (
                 <tr>
-                  <td colSpan={7}>No analytics sinks found.</td>
+                  <td colSpan={7}>未找到分析转发。</td>
                 </tr>
               )}
             </tbody>
@@ -401,15 +401,15 @@ export default function AnalyticsSinksPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>{editingSink ? "edit_sink" : "create_sink"}</h3>
+              <h3>{editingSink ? "编辑转发" : "新建转发"}</h3>
               <button className="ghost small" type="button" onClick={closeModal}>
-                close
+                关闭
               </button>
             </div>
             <div className="modal-body">
               <form className="stack-form" onSubmit={handleSubmit}>
                 <label>
-                  app_id
+                  应用 ID
                   <select
                     name="app_id"
                     value={form.app_id}
@@ -420,7 +420,7 @@ export default function AnalyticsSinksPage() {
                       }))
                     }
                   >
-                    <option value="">select_app</option>
+                    <option value="">选择应用</option>
                     {apps.map((app) => (
                       <option key={app.app_id} value={app.app_id}>
                         {app.app_id}
@@ -429,7 +429,7 @@ export default function AnalyticsSinksPage() {
                   </select>
                 </label>
                 <label>
-                  type
+                  类型
                   <select
                     name="type"
                     value={form.type}
@@ -446,7 +446,7 @@ export default function AnalyticsSinksPage() {
                 </label>
                 {form.type === "ga4" ? (
                   <label>
-                    measurement_id
+                    Measurement ID
                     <input
                       name="measurement_id"
                       placeholder="G-12345ABC"
@@ -461,7 +461,7 @@ export default function AnalyticsSinksPage() {
                   </label>
                 ) : (
                   <label>
-                    firebase_app_id
+                    Firebase App ID
                     <input
                       name="firebase_app_id"
                       placeholder="1:1234567890:ios:abc123def456"
@@ -476,7 +476,7 @@ export default function AnalyticsSinksPage() {
                   </label>
                 )}
                 <label>
-                  api_secret
+                  API Secret
                   <input
                     name="api_secret"
                     type="password"
@@ -501,14 +501,14 @@ export default function AnalyticsSinksPage() {
                       }))
                     }
                   />
-                  enabled
+                  启用
                 </label>
                 <div className="modal-actions">
                   <button className="ghost" type="button" onClick={closeModal}>
-                    cancel
+                    取消
                   </button>
                   <button className="primary" type="submit">
-                    {editingSink ? "save" : "create"}
+                    {editingSink ? "保存" : "新建"}
                   </button>
                 </div>
               </form>

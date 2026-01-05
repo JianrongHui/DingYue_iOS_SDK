@@ -129,6 +129,20 @@ const seedPackages: PackageRecord[] = [
 
 const statusClass = (status: PackageStatus) => `status status-${status}`;
 
+const STATUS_LABELS: Record<PackageStatus, string> = {
+  active: "生效",
+  inactive: "未生效",
+  rolled_back: "已回滚"
+};
+
+const PLACEMENT_TYPE_LABELS: Record<PackageManifest["placement_type"], string> = {
+  guide: "引导",
+  paywall: "付费墙"
+};
+
+const formatPlacementType = (value: PackageManifest["placement_type"]) =>
+  PLACEMENT_TYPE_LABELS[value] ?? value;
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 const buildShortId = (prefix: string) => {
@@ -207,7 +221,7 @@ export default function PackagesPage() {
         setPlacements(seedPlacements);
         setVariants(seedVariants);
         setPackages(seedPackages);
-        setError("API unavailable. Showing mock packages.");
+        setError("API 不可用，显示模拟包。");
       } else {
         setError(getErrorMessage(loadError));
       }
@@ -337,15 +351,15 @@ export default function PackagesPage() {
     setError(null);
     setSuccess(null);
     if (!uploadForm.app_id || !uploadForm.placement_id) {
-      setError("Select app_id and placement_id before uploading.");
+      setError("上传前请选择应用和投放位。");
       return;
     }
     if (!uploadForm.file) {
-      setError("Select a zip file to upload.");
+      setError("请选择要上传的 zip 文件。");
       return;
     }
     if (!uploadForm.file.name.toLowerCase().endsWith(".zip")) {
-      setError("Package file must be a .zip archive.");
+      setError("包文件必须为 .zip 格式。");
       return;
     }
 
@@ -387,7 +401,7 @@ export default function PackagesPage() {
     } catch (presignError) {
       if (shouldUseFallback(presignError)) {
         setPresignInfo(null);
-        setError("API unavailable. Using local upload flow.");
+        setError("API 不可用，改用本地上传流程。");
       } else {
         setError(getErrorMessage(presignError));
       }
@@ -398,7 +412,7 @@ export default function PackagesPage() {
     setError(null);
     setSuccess(null);
     if (!uploadForm.file || !uploadPreview) {
-      setError("Parse manifest before confirming upload.");
+      setError("请先解析 manifest 再确认上传。");
       return;
     }
 
@@ -426,14 +440,14 @@ export default function PackagesPage() {
     if (presignInfo) {
       try {
         if (!presignInfo.upload_url.startsWith("http")) {
-          throw new Error("Upload URL is not reachable.");
+          throw new Error("上传地址不可用。");
         }
         const uploadResponse = await fetch(presignInfo.upload_url, {
           method: "PUT",
           body: uploadForm.file
         });
         if (!uploadResponse.ok) {
-          throw new Error(`Upload failed with status ${uploadResponse.status}.`);
+          throw new Error(`上传失败，状态码 ${uploadResponse.status}。`);
         }
         const committed = await commitPackage({
           app_id: uploadForm.app_id,
@@ -456,7 +470,7 @@ export default function PackagesPage() {
         setPackages((prev) => [nextPackage, ...prev]);
         setSelectedPackageId(nextPackage.id);
         resetUpload();
-        setSuccess("Package uploaded. Activate the version when ready.");
+        setSuccess("包已上传，准备就绪后可激活版本。");
         return;
       } catch (uploadError) {
         if (shouldUseFallback(uploadError)) {
@@ -464,8 +478,8 @@ export default function PackagesPage() {
           setPackages((prev) => [nextPackage, ...prev]);
           setSelectedPackageId(nextPackage.id);
           resetUpload();
-          setSuccess("Package uploaded locally. Activate the version when ready.");
-          setError("API unavailable. Stored package locally.");
+          setSuccess("包已在本地上传，准备就绪后可激活版本。");
+          setError("API 不可用，已在本地保存包。");
           return;
         }
         setError(getErrorMessage(uploadError));
@@ -478,12 +492,12 @@ export default function PackagesPage() {
       setPackages((prev) => [nextPackage, ...prev]);
       setSelectedPackageId(nextPackage.id);
       resetUpload();
-      setSuccess("Package uploaded locally. Activate the version when ready.");
-      setError("API unavailable. Stored package locally.");
+      setSuccess("包已在本地上传，准备就绪后可激活版本。");
+      setError("API 不可用，已在本地保存包。");
       return;
     }
 
-    setError("Upload signature missing. Refresh and try again.");
+    setError("缺少上传签名，请刷新后重试。");
   };
 
   const handleActivate = (target: PackageRecord) => {
@@ -505,7 +519,7 @@ export default function PackagesPage() {
       return pkg;
     });
     setPackages(nextPackages);
-    setSuccess(`Activated version ${target.version}.`);
+    setSuccess(`已激活版本 ${target.version}。`);
   };
 
   const getRollbackTarget = (target: PackageRecord) => {
@@ -527,7 +541,7 @@ export default function PackagesPage() {
     setSuccess(null);
     const rollbackTarget = getRollbackTarget(target);
     if (!rollbackTarget) {
-      setError("No previous version available for rollback.");
+      setError("没有可回滚的历史版本。");
       return;
     }
     const nextPackages = packages.map((pkg): PackageRecord => {
@@ -546,29 +560,29 @@ export default function PackagesPage() {
       return pkg;
     });
     setPackages(nextPackages);
-    setSuccess(`Rolled back to version ${rollbackTarget.version}.`);
+    setSuccess(`已回滚到版本 ${rollbackTarget.version}。`);
   };
 
   const handleDelete = (target: PackageRecord) => {
     setError(null);
     setSuccess(null);
     if (target.status === "active") {
-      setError("Cannot delete active version. Activate another version first.");
+      setError("无法删除已激活版本，请先激活其他版本。");
       return;
     }
-    if (!window.confirm(`Delete package ${target.id}?`)) {
+    if (!window.confirm(`确认删除包 ${target.id}？`)) {
       return;
     }
     const nextPackages = packages.filter((pkg) => pkg.id !== target.id);
     setPackages(nextPackages);
-    setSuccess(`Deleted package ${target.id}.`);
+    setSuccess(`已删除包 ${target.id}。`);
   };
 
   return (
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={loadData}>
-          refresh
+          刷新
         </button>
         <button
           className="ghost"
@@ -579,11 +593,11 @@ export default function PackagesPage() {
             setFilterStatus("all");
           }}
         >
-          reset_filters
+          重置筛选
         </button>
       </div>
 
-      {loading && <div className="banner">loading packages...</div>}
+      {loading && <div className="banner">正在加载包...</div>}
       {error && <div className="banner error">{error}</div>}
       {success && <div className="banner success">{success}</div>}
 
@@ -591,19 +605,19 @@ export default function PackagesPage() {
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>upload_package</h3>
-              <p>Upload zip bundle and preview manifest.json before confirm.</p>
+              <h3>上传包</h3>
+              <p>上传 zip 包，并在确认前预览 manifest.json。</p>
             </div>
           </div>
           <form className="stack-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              app_id
+              应用 ID
               <select
                 name="app_id"
                 value={uploadForm.app_id}
                 onChange={(event) => handleUploadAppChange(event.target.value)}
               >
-                <option value="">select_app</option>
+                <option value="">选择应用</option>
                 {apps.map((app) => (
                   <option key={app.app_id} value={app.app_id}>
                     {app.app_id}
@@ -612,13 +626,13 @@ export default function PackagesPage() {
               </select>
             </label>
             <label>
-              placement_id
+              投放位 ID
               <select
                 name="placement_id"
                 value={uploadForm.placement_id}
                 onChange={(event) => handleUploadPlacementChange(event.target.value)}
               >
-                <option value="">select_placement</option>
+                <option value="">选择投放位</option>
                 {uploadPlacements.map((placement) => (
                   <option key={placement.placement_id} value={placement.placement_id}>
                     {placement.placement_id}
@@ -627,7 +641,7 @@ export default function PackagesPage() {
               </select>
             </label>
             <label>
-              package_file
+              包文件
               <input
                 name="package_file"
                 type="file"
@@ -638,20 +652,22 @@ export default function PackagesPage() {
             </label>
             {uploadForm.file && (
               <p className="form-hint">
-                selected_file: {uploadForm.file.name} ({uploadForm.file.size.toLocaleString()}{" "}
-                bytes)
+                已选文件：{uploadForm.file.name}（
+                {uploadForm.file.size.toLocaleString()} 字节）
               </p>
             )}
             <button className="ghost" type="button" onClick={handleParseManifest}>
-              parse_manifest
+              解析 manifest
             </button>
             {uploadPreview ? (
               <>
                 <div className="chip-list">
-                  <span>version: {uploadPreview.manifest.package_version}</span>
-                  <span>placement_type: {uploadPreview.manifest.placement_type}</span>
-                  <span>entry_path: {uploadPreview.manifest.entry_path}</span>
-                  <span>checksum: {uploadPreview.checksum}</span>
+                  <span>版本：{uploadPreview.manifest.package_version}</span>
+                  <span>
+                    投放位类型：{formatPlacementType(uploadPreview.manifest.placement_type)}
+                  </span>
+                  <span>入口路径：{uploadPreview.manifest.entry_path}</span>
+                  <span>校验和：{uploadPreview.checksum}</span>
                 </div>
                 <pre className="code-block">
                   {JSON.stringify(uploadPreview.manifest, null, 2)}
@@ -659,12 +675,12 @@ export default function PackagesPage() {
               </>
             ) : (
               <p className="form-hint">
-                Parse manifest.json to preview version and entry_path.
+                解析 manifest.json 以预览版本与入口路径。
               </p>
             )}
             <div className="modal-actions">
               <button className="ghost" type="button" onClick={resetUpload}>
-                clear
+                清空
               </button>
               <button
                 className="primary"
@@ -672,7 +688,7 @@ export default function PackagesPage() {
                 onClick={handleConfirmUpload}
                 disabled={!uploadPreview}
               >
-                confirm_upload
+                确认上传
               </button>
             </div>
           </form>
@@ -680,32 +696,32 @@ export default function PackagesPage() {
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>package_detail</h3>
-              <p>Manifest payload, CDN URL, checksum, and linked variants.</p>
+              <h3>包详情</h3>
+              <p>查看 manifest、CDN 地址、校验和与关联变体。</p>
             </div>
           </div>
           {selectedPackage ? (
             <>
               <div className="chip-list">
-                <span>package_id: {selectedPackage.id}</span>
-                <span>app_id: {selectedPackage.app_id}</span>
-                <span>placement_id: {selectedPackage.placement_id}</span>
-                <span>version: {selectedPackage.version}</span>
-                <span>entry_path: {selectedPackage.entry_path}</span>
-                <span>status: {selectedPackage.status}</span>
+                <span>包 ID：{selectedPackage.id}</span>
+                <span>应用 ID：{selectedPackage.app_id}</span>
+                <span>投放位 ID：{selectedPackage.placement_id}</span>
+                <span>版本：{selectedPackage.version}</span>
+                <span>入口路径：{selectedPackage.entry_path}</span>
+                <span>状态：{STATUS_LABELS[selectedPackage.status]}</span>
                 <span>
-                  size_bytes: {selectedPackage.size_bytes.toLocaleString()}
+                  大小(字节)：{selectedPackage.size_bytes.toLocaleString()}
                 </span>
               </div>
               <div className="key-row">
                 <div>
-                  <div className="key-label">cdn_url</div>
+                  <div className="key-label">CDN 地址</div>
                   <div className="key-value">{selectedPackage.cdn_url}</div>
                 </div>
               </div>
               <div className="key-row">
                 <div>
-                  <div className="key-label">checksum</div>
+                  <div className="key-label">校验和</div>
                   <div className="key-value">{selectedPackage.checksum}</div>
                 </div>
               </div>
@@ -716,23 +732,23 @@ export default function PackagesPage() {
                 </pre>
               </div>
               <div>
-                <div className="form-hint">variants</div>
+                <div className="form-hint">关联变体</div>
                 {selectedVariants.length ? (
                   <div className="chip-list">
                     {selectedVariants.map((variant) => (
                       <span key={variant.id}>
-                        variant_id: {variant.id}
+                        变体 ID：{variant.id}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <p className="form-hint">No variants linked to this package.</p>
+                  <p className="form-hint">该包暂无关联变体。</p>
                 )}
               </div>
             </>
           ) : (
             <p className="form-hint">
-              Select a package from the list to view details.
+              从列表选择一个包查看详情。
             </p>
           )}
         </div>
@@ -741,18 +757,18 @@ export default function PackagesPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>package_list</h3>
-            <p>Uploaded packages and active versions.</p>
+            <h3>包列表</h3>
+            <p>已上传的包与当前生效版本。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              app_id
+              应用 ID
               <select
                 name="app_id"
                 value={filterAppId}
                 onChange={(event) => setFilterAppId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {apps.map((app) => (
                   <option key={app.app_id} value={app.app_id}>
                     {app.app_id}
@@ -761,13 +777,13 @@ export default function PackagesPage() {
               </select>
             </label>
             <label>
-              placement_id
+              投放位 ID
               <select
                 name="placement_id"
                 value={filterPlacementId}
                 onChange={(event) => setFilterPlacementId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {filteredPlacements.map((placement) => (
                   <option key={placement.placement_id} value={placement.placement_id}>
                     {placement.placement_id}
@@ -776,7 +792,7 @@ export default function PackagesPage() {
               </select>
             </label>
             <label>
-              status
+              状态
               <select
                 name="status"
                 value={filterStatus}
@@ -784,10 +800,10 @@ export default function PackagesPage() {
                   setFilterStatus(event.target.value as "all" | PackageStatus)
                 }
               >
-                <option value="all">all</option>
-                <option value="active">active</option>
-                <option value="inactive">inactive</option>
-                <option value="rolled_back">rolled_back</option>
+                <option value="all">全部</option>
+                <option value="active">{STATUS_LABELS.active}</option>
+                <option value="inactive">{STATUS_LABELS.inactive}</option>
+                <option value="rolled_back">{STATUS_LABELS.rolled_back}</option>
               </select>
             </label>
           </form>
@@ -797,14 +813,14 @@ export default function PackagesPage() {
           <table>
             <thead>
               <tr>
-                <th>package_id</th>
-                <th>version</th>
-                <th>entry_path</th>
-                <th>checksum</th>
-                <th>status</th>
-                <th>size_bytes</th>
-                <th>uploaded_at</th>
-                <th>actions</th>
+                <th>包 ID</th>
+                <th>版本</th>
+                <th>入口路径</th>
+                <th>校验和</th>
+                <th>状态</th>
+                <th>大小(字节)</th>
+                <th>上传时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -823,7 +839,9 @@ export default function PackagesPage() {
                     <td>{pkg.entry_path}</td>
                     <td>{pkg.checksum}</td>
                     <td>
-                      <span className={statusClass(pkg.status)}>{pkg.status}</span>
+                      <span className={statusClass(pkg.status)}>
+                        {STATUS_LABELS[pkg.status]}
+                      </span>
                     </td>
                     <td>{pkg.size_bytes.toLocaleString()}</td>
                     <td>{pkg.created_at}</td>
@@ -836,7 +854,7 @@ export default function PackagesPage() {
                             onClick={() => handleRollback(pkg)}
                             disabled={!rollbackTarget}
                           >
-                            rollback
+                            回滚
                           </button>
                         ) : (
                           <button
@@ -844,7 +862,7 @@ export default function PackagesPage() {
                             type="button"
                             onClick={() => handleActivate(pkg)}
                           >
-                            activate
+                            激活
                           </button>
                         )}
                         {pkg.status !== "active" && (
@@ -853,7 +871,7 @@ export default function PackagesPage() {
                             type="button"
                             onClick={() => handleDelete(pkg)}
                           >
-                            delete
+                            删除
                           </button>
                         )}
                       </div>
@@ -863,7 +881,7 @@ export default function PackagesPage() {
               })}
               {!filteredPackages.length && !loading && (
                 <tr>
-                  <td colSpan={8}>No packages found.</td>
+                  <td colSpan={8}>未找到包。</td>
                 </tr>
               )}
             </tbody>

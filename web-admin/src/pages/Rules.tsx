@@ -39,17 +39,17 @@ type RuleFormState = {
 type TestInputState = Record<string, string>;
 
 const FIELD_DEFINITIONS: FieldDefinition[] = [
-  { id: "country", label: "country", type: "string" },
-  { id: "region", label: "region", type: "string" },
-  { id: "locale", label: "locale", type: "string" },
-  { id: "channel", label: "channel", type: "string" },
-  { id: "app_version", label: "app_version", type: "semver" },
-  { id: "os_version", label: "os_version", type: "semver" },
-  { id: "is_first_launch", label: "is_first_launch", type: "boolean" },
-  { id: "has_entitlement", label: "has_entitlement", type: "boolean" },
-  { id: "session_count", label: "session_count", type: "number" },
-  { id: "install_days", label: "install_days", type: "number" },
-  { id: "rc_entitlements", label: "rc_entitlements", type: "array" }
+  { id: "country", label: "国家/地区", type: "string" },
+  { id: "region", label: "区域", type: "string" },
+  { id: "locale", label: "语言/地区", type: "string" },
+  { id: "channel", label: "渠道", type: "string" },
+  { id: "app_version", label: "应用版本", type: "semver" },
+  { id: "os_version", label: "系统版本", type: "semver" },
+  { id: "is_first_launch", label: "首次启动", type: "boolean" },
+  { id: "has_entitlement", label: "已有权益", type: "boolean" },
+  { id: "session_count", label: "会话次数", type: "number" },
+  { id: "install_days", label: "安装天数", type: "number" },
+  { id: "rc_entitlements", label: "RC 权益", type: "array" }
 ];
 
 const FIELD_MAP = FIELD_DEFINITIONS.reduce<Record<string, FieldDefinition>>(
@@ -61,16 +61,21 @@ const FIELD_MAP = FIELD_DEFINITIONS.reduce<Record<string, FieldDefinition>>(
 );
 
 const OPERATOR_LABELS: Record<ConditionOperator, string> = {
-  eq: "eq",
-  ne: "ne",
-  in: "in",
-  notIn: "notIn",
-  gt: "gt",
-  gte: "gte",
-  lt: "lt",
-  lte: "lte",
-  contains: "contains",
-  regex: "regex"
+  eq: "等于",
+  ne: "不等于",
+  in: "在列表中",
+  notIn: "不在列表中",
+  gt: "大于",
+  gte: "大于等于",
+  lt: "小于",
+  lte: "小于等于",
+  contains: "包含",
+  regex: "正则匹配"
+};
+
+const MATCH_TYPE_LABELS: Record<MatchType, string> = {
+  all: "全部满足",
+  any: "任意满足"
 };
 
 const OPERATORS_BY_TYPE: Record<FieldType, ConditionOperator[]> = {
@@ -230,7 +235,7 @@ const formatConditionValue = (value: ConditionValue) => {
     return value.join(", ");
   }
   if (typeof value === "boolean") {
-    return value ? "true" : "false";
+    return value ? "是" : "否";
   }
   if (value === "" || value === null || value === undefined) {
     return "-";
@@ -238,8 +243,11 @@ const formatConditionValue = (value: ConditionValue) => {
   return String(value);
 };
 
-const formatCondition = (condition: Condition) =>
-  `${condition.field} ${condition.op} ${formatConditionValue(condition.value)}`;
+const formatCondition = (condition: Condition) => {
+  const fieldLabel = FIELD_MAP[condition.field]?.label ?? condition.field;
+  const opLabel = OPERATOR_LABELS[condition.op] ?? condition.op;
+  return `${fieldLabel} ${opLabel} ${formatConditionValue(condition.value)}`;
+};
 
 const evaluateCondition = (
   condition: Condition,
@@ -466,7 +474,7 @@ export default function RulesPage() {
         setPlacements(seedPlacements);
         setVariants(seedVariants);
         setRuleSets([]);
-        setError("API unavailable. Showing mock rulesets.");
+        setError("API 不可用，显示模拟规则集。");
       } else {
         setError(getErrorMessage(loadError));
       }
@@ -604,7 +612,7 @@ export default function RulesPage() {
   };
 
   const handleDelete = async (ruleSet: RuleSet) => {
-    if (!window.confirm(`Delete ruleset ${ruleSet.id}?`)) {
+    if (!window.confirm(`确认删除规则集 ${ruleSet.id}？`)) {
       return;
     }
     setError(null);
@@ -614,7 +622,7 @@ export default function RulesPage() {
     } catch (deleteError) {
       if (shouldUseFallback(deleteError)) {
         setRuleSets((prev) => prev.filter((item) => item.id !== ruleSet.id));
-        setError("API unavailable. Deleted ruleset locally.");
+        setError("API 不可用，已在本地删除规则集。");
       } else {
         setError(getErrorMessage(deleteError));
       }
@@ -635,7 +643,7 @@ export default function RulesPage() {
       );
     } catch (updateError) {
       if (shouldUseFallback(updateError)) {
-        setError("API unavailable. Updated priority locally.");
+        setError("API 不可用，已在本地更新优先级。");
       } else {
         setRuleSets((prev) =>
           prev.map((item) =>
@@ -650,15 +658,15 @@ export default function RulesPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form.placement_id || !form.variant_id) {
-      setError("placement_id and variant_id are required.");
+      setError("placement_id 和 variant_id 为必填。");
       return;
     }
     if (!form.conditions.length) {
-      setError("Add at least one condition.");
+      setError("请至少添加一个条件。");
       return;
     }
     if (!form.conditions.every(isConditionValid)) {
-      setError("Each condition needs a field, operator, and value.");
+      setError("每个条件都需要字段、操作符和值。");
       return;
     }
 
@@ -707,7 +715,7 @@ export default function RulesPage() {
         );
         setModalOpen(false);
         setEditingRuleSet(null);
-        setError("API unavailable. Saved ruleset locally.");
+        setError("API 不可用，已在本地保存规则集。");
       } else {
         setError(getErrorMessage(saveError));
       }
@@ -743,51 +751,53 @@ export default function RulesPage() {
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={openCreate}>
-          create_ruleset
+          新建规则集
         </button>
         <button className="ghost" type="button" onClick={loadData}>
-          refresh
+          刷新
         </button>
       </div>
 
-      {loading && <div className="banner">loading rulesets...</div>}
+      {loading && <div className="banner">正在加载规则集...</div>}
       {error && <div className="banner error">{error}</div>}
 
       <div className="card-grid two">
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>rule_builder</h3>
-              <p>Compose all/any rules with typed inputs and DSL preview.</p>
+              <h3>规则构建器</h3>
+              <p>使用结构化条件构建规则，并预览 DSL。</p>
             </div>
           </div>
           <ul className="stack-list">
-            <li>match_type: all / any</li>
+            <li>匹配模式：全部满足 / 任意满足</li>
             <li>
-              fields: country, region, locale, channel, app_version, os_version,
-              is_first_launch, has_entitlement, session_count, install_days,
-              rc_entitlements
+              字段：国家/地区、区域、语言/地区、渠道、应用版本、系统版本、首次启动、
+              已有权益、会话次数、安装天数、RC 权益
             </li>
-            <li>operators: eq, ne, in, notIn, gt, gte, lt, lte, contains, regex</li>
-            <li>priority: lower number wins</li>
+            <li>
+              操作符：等于、不等于、在列表中、不在列表中、大于、大于等于、小于、小于等于、
+              包含、正则匹配
+            </li>
+            <li>优先级：数值越小越优先</li>
           </ul>
         </div>
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>match_test</h3>
-              <p>Simulate rule evaluation for a test user.</p>
+              <h3>匹配测试</h3>
+              <p>模拟特定用户属性的规则匹配结果。</p>
             </div>
           </div>
           <form className="stack-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              placement_id
+              投放位 ID
               <select
                 name="test_placement_id"
                 value={testPlacementId}
                 onChange={(event) => setTestPlacementId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {placements.map((placement) => (
                   <option key={placement.placement_id} value={placement.placement_id}>
                     {placement.placement_id}
@@ -811,9 +821,9 @@ export default function RulesPage() {
                           }))
                         }
                       >
-                        <option value="">unset</option>
-                        <option value="true">true</option>
-                        <option value="false">false</option>
+                        <option value="">未设置</option>
+                        <option value="true">是</option>
+                        <option value="false">否</option>
                       </select>
                     </label>
                   );
@@ -856,7 +866,7 @@ export default function RulesPage() {
               })}
             </div>
             <button className="ghost" type="button" onClick={handleRunTest}>
-              run_test
+              运行测试
             </button>
           </form>
           {testResult && (
@@ -864,8 +874,8 @@ export default function RulesPage() {
               className={`banner ${testResult.matched ? "success" : "error"}`}
             >
               {testResult.matched
-                ? `Matched ruleset ${testResult.matched.id} (variant ${testResult.matched.variant_id}).`
-                : `No ruleset matched across ${testResult.evaluated.length} candidates.`}
+                ? `匹配到规则集 ${testResult.matched.id}（变体 ${testResult.matched.variant_id}）。`
+                : `在 ${testResult.evaluated.length} 个候选规则集中未匹配到结果。`}
             </div>
           )}
         </div>
@@ -874,18 +884,18 @@ export default function RulesPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>ruleset_list</h3>
-            <p>Priority-ordered rulesets per placement.</p>
+            <h3>规则集列表</h3>
+            <p>按优先级展示各投放位的规则集。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              placement_id
+              投放位 ID
               <select
                 name="placement_id"
                 value={filterPlacementId}
                 onChange={(event) => setFilterPlacementId(event.target.value)}
               >
-                <option value="">all</option>
+                <option value="">全部</option>
                 {placements.map((placement) => (
                   <option key={placement.placement_id} value={placement.placement_id}>
                     {placement.placement_id}
@@ -894,7 +904,7 @@ export default function RulesPage() {
               </select>
             </label>
             <label>
-              match_type
+              匹配模式
               <select
                 name="match_type"
                 value={filterMatchType}
@@ -902,9 +912,9 @@ export default function RulesPage() {
                   setFilterMatchType(event.target.value as "" | MatchType)
                 }
               >
-                <option value="">all</option>
-                <option value="all">all</option>
-                <option value="any">any</option>
+                <option value="">全部</option>
+                <option value="all">全部满足</option>
+                <option value="any">任意满足</option>
               </select>
             </label>
             <button
@@ -915,7 +925,7 @@ export default function RulesPage() {
                 setFilterMatchType("");
               }}
             >
-              reset
+              重置
             </button>
           </form>
         </div>
@@ -924,15 +934,15 @@ export default function RulesPage() {
           <table>
             <thead>
               <tr>
-                <th>rule_set_id</th>
-                <th>app_id</th>
-                <th>placement_id</th>
-                <th>variant_id</th>
-                <th>priority</th>
-                <th>match_type</th>
-                <th>conditions</th>
-                <th>created_at</th>
-                <th>actions</th>
+                <th>规则集 ID</th>
+                <th>应用 ID</th>
+                <th>投放位 ID</th>
+                <th>变体 ID</th>
+                <th>优先级</th>
+                <th>匹配模式</th>
+                <th>条件</th>
+                <th>创建时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -952,7 +962,7 @@ export default function RulesPage() {
                       }
                     />
                   </td>
-                  <td>{ruleSet.match_type}</td>
+                  <td>{MATCH_TYPE_LABELS[ruleSet.match_type]}</td>
                   <td>{ruleSet.conditions.map(formatCondition).join(" | ")}</td>
                   <td>{ruleSet.created_at}</td>
                   <td>
@@ -962,14 +972,14 @@ export default function RulesPage() {
                         type="button"
                         onClick={() => openEdit(ruleSet)}
                       >
-                        edit
+                        编辑
                       </button>
                       <button
                         className="ghost small"
                         type="button"
                         onClick={() => handleDelete(ruleSet)}
                       >
-                        delete
+                        删除
                       </button>
                     </div>
                   </td>
@@ -977,7 +987,7 @@ export default function RulesPage() {
               ))}
               {!filteredRuleSets.length && !loading && (
                 <tr>
-                  <td colSpan={9}>No rulesets found.</td>
+                  <td colSpan={9}>未找到规则集。</td>
                 </tr>
               )}
             </tbody>
@@ -994,21 +1004,21 @@ export default function RulesPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>{editingRuleSet ? "edit_ruleset" : "create_ruleset"}</h3>
+              <h3>{editingRuleSet ? "编辑规则集" : "新建规则集"}</h3>
               <button className="ghost small" type="button" onClick={closeModal}>
-                close
+                关闭
               </button>
             </div>
             <div className="modal-body">
               <form className="stack-form" onSubmit={handleSubmit}>
                 <label>
-                  placement_id
+                  投放位 ID
                   <select
                     name="placement_id"
                     value={form.placement_id}
                     onChange={(event) => handleFormPlacementChange(event.target.value)}
                   >
-                    <option value="">select_placement</option>
+                    <option value="">选择投放位</option>
                     {placements.map((placement) => (
                       <option
                         key={placement.placement_id}
@@ -1020,7 +1030,7 @@ export default function RulesPage() {
                   </select>
                 </label>
                 <label>
-                  variant_id
+                  变体 ID
                   <select
                     name="variant_id"
                     value={form.variant_id}
@@ -1031,7 +1041,7 @@ export default function RulesPage() {
                       }))
                     }
                   >
-                    <option value="">select_variant</option>
+                    <option value="">选择变体</option>
                     {formVariants.map((variant) => (
                       <option key={variant.id} value={variant.id}>
                         {variant.id}
@@ -1040,7 +1050,7 @@ export default function RulesPage() {
                   </select>
                 </label>
                 <label>
-                  priority
+                  优先级
                   <input
                     name="priority"
                     type="number"
@@ -1054,7 +1064,7 @@ export default function RulesPage() {
                   />
                 </label>
                 <label>
-                  match_type
+                  匹配模式
                   <select
                     name="match_type"
                     value={form.match_type}
@@ -1065,12 +1075,12 @@ export default function RulesPage() {
                       }))
                     }
                   >
-                    <option value="all">all</option>
-                    <option value="any">any</option>
+                    <option value="all">全部满足</option>
+                    <option value="any">任意满足</option>
                   </select>
                 </label>
                 <div>
-                  <div className="form-hint">conditions</div>
+                  <div className="form-hint">条件</div>
                   {form.conditions.map((condition, index) => {
                     const field = FIELD_MAP[condition.field] ?? FIELD_DEFINITIONS[0];
                     const supportedOps = OPERATORS_BY_TYPE[field.type];
@@ -1078,7 +1088,7 @@ export default function RulesPage() {
                     return (
                       <div className="inline-form" key={`${condition.field}-${index}`}>
                         <label>
-                          field
+                          字段
                           <select
                             value={condition.field}
                             onChange={(event) =>
@@ -1093,7 +1103,7 @@ export default function RulesPage() {
                           </select>
                         </label>
                         <label>
-                          op
+                          操作符
                           <select
                             value={condition.op}
                             onChange={(event) =>
@@ -1111,7 +1121,7 @@ export default function RulesPage() {
                           </select>
                         </label>
                         <label>
-                          value
+                          值
                           {field.type === "boolean" ? (
                             <select
                               value={String(condition.value)}
@@ -1122,8 +1132,8 @@ export default function RulesPage() {
                                 )
                               }
                             >
-                              <option value="true">true</option>
-                              <option value="false">false</option>
+                              <option value="true">是</option>
+                              <option value="false">否</option>
                             </select>
                           ) : showListInput ? (
                             <textarea
@@ -1161,27 +1171,27 @@ export default function RulesPage() {
                           onClick={() => handleRemoveCondition(index)}
                           disabled={form.conditions.length === 1}
                         >
-                          remove
+                          移除
                         </button>
                       </div>
                     );
                   })}
                   <button className="ghost small" type="button" onClick={handleAddCondition}>
-                    add_condition
+                    添加条件
                   </button>
                 </div>
                 <div>
-                  <div className="form-hint">dsl_preview</div>
+                  <div className="form-hint">DSL 预览</div>
                   <pre className="code-block">
                     {JSON.stringify(ruleDslPreview, null, 2)}
                   </pre>
                 </div>
                 <div className="modal-actions">
                   <button className="ghost" type="button" onClick={closeModal}>
-                    cancel
+                    取消
                   </button>
                   <button className="primary" type="submit">
-                    {editingRuleSet ? "save" : "create"}
+                    {editingRuleSet ? "保存" : "新建"}
                   </button>
                 </div>
               </form>

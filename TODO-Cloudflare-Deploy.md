@@ -6,8 +6,8 @@
 - 可选：GA4_MEASUREMENT_ID / FIREBASE_APP_ID（若使用 env 方式转发）
 
 ## 2) 管理后台 Pages 环境变量（必须）
-- VITE_API_BASE_URL=https://dingyue-sdk-api.hjryxy.workers.dev
-- 如需限制跨域：CORS_ALLOWED_ORIGINS=https://dingyue-sdk-admin.pages.dev
+- VITE_API_BASE_URL=https://configapi.calmwaveapp.com
+- 如需限制跨域：CORS_ALLOWED_ORIGINS=https://configadmin.calmwaveapp.com
 
 ## 3) Worker 线上可用性验证（必须）
 - GET /healthz 应返回 200

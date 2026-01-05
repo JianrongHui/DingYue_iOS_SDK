@@ -19,65 +19,65 @@ export type RouteConfig = {
 export const routes: RouteConfig[] = [
   {
     path: "/apps",
-    label: "App",
-    description: "Create, manage, and secure SDK applications.",
-    nav_group: "Build",
+    label: "应用",
+    description: "创建、管理并保护 SDK 应用。",
+    nav_group: "构建",
     component: AppsPage
   },
   {
     path: "/placements",
-    label: "Placement",
-    description: "Control placements, defaults, and live packages.",
-    nav_group: "Build",
+    label: "投放位",
+    description: "管理投放位、默认版本与上线包。",
+    nav_group: "构建",
     component: PlacementsPage
   },
   {
     path: "/variants",
-    label: "Variant",
-    description: "Bind packages and configure offering order.",
-    nav_group: "Build",
+    label: "变体",
+    description: "绑定包并配置产品顺序。",
+    nav_group: "构建",
     component: VariantsPage
   },
   {
     path: "/rules",
-    label: "Rules",
-    description: "Design rulesets and traffic targeting logic.",
-    nav_group: "Targeting",
+    label: "规则",
+    description: "配置规则集与流量定向逻辑。",
+    nav_group: "定向",
     component: RulesPage
   },
   {
     path: "/experiments",
-    label: "Experiments",
-    description: "Plan experiments, split traffic, and track lift.",
-    nav_group: "Targeting",
+    label: "实验",
+    description: "规划实验、分流并跟踪提升。",
+    nav_group: "定向",
     component: ExperimentsPage
   },
   {
     path: "/packages",
-    label: "Packages",
-    description: "Upload packages and manage versions.",
-    nav_group: "Release",
+    label: "包管理",
+    description: "上传包并管理版本。",
+    nav_group: "发布",
     component: PackagesPage
   },
   {
     path: "/events",
-    label: "Events",
-    description: "Query events by time, placement, and name.",
-    nav_group: "Insights",
+    label: "事件",
+    description: "按时间、投放位与事件名查询。",
+    nav_group: "洞察",
     component: EventsPage
   },
   {
     path: "/analytics-sinks",
-    label: "Analytics Sinks",
-    description: "Manage GA4 and Firebase forwarding destinations.",
-    nav_group: "Insights",
+    label: "分析转发",
+    description: "管理 GA4 / Firebase 转发目的地。",
+    nav_group: "洞察",
     component: AnalyticsSinksPage
   },
   {
     path: "/analytics",
-    label: "Analytics",
-    description: "Review funnels and forwarding status.",
-    nav_group: "Insights",
+    label: "统计分析",
+    description: "查看漏斗与转发状态。",
+    nav_group: "洞察",
     component: AnalyticsPage
   }
 ];

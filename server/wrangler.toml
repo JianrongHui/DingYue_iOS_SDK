@@ -21,4 +21,4 @@ id = "2c10068bab1e4d74846372b6139c7a26"
 # Sensitive config should be stored as secrets:
 # wrangler secret put GA4_API_SECRET
 # wrangler secret put FIREBASE_API_SECRET
-CORS_ALLOWED_ORIGINS = "https://dingyue-sdk-admin.pages.dev"
+CORS_ALLOWED_ORIGINS = "https://configadmin.calmwaveapp.com"

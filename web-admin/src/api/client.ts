@@ -65,7 +65,7 @@ export const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;
   }
-  return "Request failed.";
+  return "请求失败。";
 };
 
 export const shouldUseFallback = (error: unknown): boolean => {
@@ -95,8 +95,8 @@ export async function apiRequest<T>(
     const details = await parseJson<unknown>(response).catch(() => undefined);
     const message =
       typeof details === "object" && details && "message" in details
-        ? String((details as { message?: string }).message || "Request failed")
-        : "Request failed";
+        ? String((details as { message?: string }).message || "请求失败")
+        : "请求失败";
     throw new ApiError(response.status, message, details);
   }
 

@@ -297,7 +297,7 @@ export default function EventsPage() {
           setApps(seedApps);
           setPlacements(seedPlacements);
           setVariants(seedVariants);
-          setError("API unavailable. Using mock metadata.");
+          setError("API 不可用，使用模拟元数据。");
         } else {
           setError(getErrorMessage(loadError));
         }
@@ -352,7 +352,7 @@ export default function EventsPage() {
             { apps, placements, variants }
           )
         );
-        setError("API unavailable. Showing mock events.");
+        setError("API 不可用，显示模拟事件。");
       } else {
         setError(getErrorMessage(queryError));
       }
@@ -401,7 +401,7 @@ export default function EventsPage() {
     <section className="page">
       <div className="section-actions">
         <button className="primary" type="button" onClick={runQuery}>
-          query_events
+          查询事件
         </button>
         <button
           className="ghost"
@@ -409,18 +409,18 @@ export default function EventsPage() {
           onClick={exportCsv}
           disabled={!eventSummary.length}
         >
-          export_csv
+          导出 CSV
         </button>
       </div>
 
-      {loading && <div className="banner">loading events...</div>}
+      {loading && <div className="banner">正在加载事件...</div>}
       {error && <div className="banner error">{error}</div>}
 
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>event_query</h3>
-            <p>Filter by time, event_name, and placement_id.</p>
+            <h3>事件查询</h3>
+            <p>按时间、事件名与投放位筛选。</p>
           </div>
           <form
             className="inline-form"
@@ -430,13 +430,13 @@ export default function EventsPage() {
             }}
           >
             <label>
-              app_id
+              应用 ID
               <select
                 name="app_id"
                 value={appId}
                 onChange={(event) => setAppId(event.target.value)}
               >
-                <option value="all">all</option>
+                <option value="all">全部</option>
                 {apps.map((app) => (
                   <option key={app.app_id} value={app.app_id}>
                     {app.app_id}
@@ -445,7 +445,7 @@ export default function EventsPage() {
               </select>
             </label>
             <label>
-              event_name
+              事件名称
               <select
                 name="event_name"
                 multiple
@@ -466,7 +466,7 @@ export default function EventsPage() {
               </select>
             </label>
             <label>
-              placement_id
+              投放位 ID
               <input
                 name="placement_id"
                 list="placement-options"
@@ -476,7 +476,7 @@ export default function EventsPage() {
               />
             </label>
             <label>
-              from
+              开始日期
               <input
                 name="from"
                 type="date"
@@ -485,7 +485,7 @@ export default function EventsPage() {
               />
             </label>
             <label>
-              to
+              结束日期
               <input
                 name="to"
                 type="date"
@@ -494,7 +494,7 @@ export default function EventsPage() {
               />
             </label>
             <button className="ghost" type="submit">
-              run_query
+              执行查询
             </button>
           </form>
         </div>
@@ -506,10 +506,10 @@ export default function EventsPage() {
         </datalist>
 
         <div className="chip-list">
-          <span>records: {eventDetails.length}</span>
-          <span>groups: {eventSummary.length}</span>
+          <span>记录数：{eventDetails.length}</span>
+          <span>分组数：{eventSummary.length}</span>
           <span>
-            range: {from} to {to}
+            范围：{from} 至 {to}
           </span>
         </div>
 
@@ -517,12 +517,12 @@ export default function EventsPage() {
           <table>
             <thead>
               <tr>
-                <th>event_name</th>
-                <th>placement_id</th>
-                <th>variant_id</th>
-                <th>count</th>
-                <th>unique_users</th>
-                <th>last_seen_at</th>
+                <th>事件名称</th>
+                <th>投放位 ID</th>
+                <th>变体 ID</th>
+                <th>次数</th>
+                <th>去重用户数</th>
+                <th>最后发生时间</th>
               </tr>
             </thead>
             <tbody>
@@ -541,7 +541,7 @@ export default function EventsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6}>no_data</td>
+                  <td colSpan={6}>暂无数据</td>
                 </tr>
               )}
             </tbody>
@@ -552,12 +552,12 @@ export default function EventsPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3>funnel_analysis</h3>
-            <p>Compare two events and calculate conversion rate.</p>
+            <h3>漏斗分析</h3>
+            <p>对比两个事件并计算转化率。</p>
           </div>
           <form className="inline-form" onSubmit={(event) => event.preventDefault()}>
             <label>
-              event_a
+              事件 A
               <select
                 name="event_a"
                 value={funnelEventA}
@@ -571,7 +571,7 @@ export default function EventsPage() {
               </select>
             </label>
             <label>
-              event_b
+              事件 B
               <select
                 name="event_b"
                 value={funnelEventB}
@@ -588,9 +588,9 @@ export default function EventsPage() {
         </div>
 
         <div className="chip-list">
-          <span>event_a_count: {eventACount}</span>
-          <span>event_b_count: {eventBCount}</span>
-          <span>conversion_rate: {conversionLabel}</span>
+          <span>事件 A 次数：{eventACount}</span>
+          <span>事件 B 次数：{eventBCount}</span>
+          <span>转化率：{conversionLabel}</span>
         </div>
       </div>
     </section>
