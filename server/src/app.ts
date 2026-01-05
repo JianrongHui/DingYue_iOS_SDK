@@ -4,6 +4,7 @@ import { errorHandler } from './middleware/error_handler';
 import { hmacAuth } from './middleware/hmac';
 import { requestIdMiddleware } from './middleware/request_id';
 import { registerConfigRoutes } from './modules/config';
+import { registerEtlRoutes } from './modules/etl';
 import { registerEventsRoutes } from './modules/events';
 import { registerAnalyticsSinksRoutes } from './modules/analytics-sinks';
 import { registerPackagesModule } from './modules/packages';
@@ -39,6 +40,7 @@ export function createApp(): Express {
 
 function registerModules(app: Express): void {
   registerConfigRoutes(app);
+  registerEtlRoutes(app);
   registerEventsRoutes(app);
   registerAnalyticsSinksRoutes(app);
   registerPackagesModule(app);
