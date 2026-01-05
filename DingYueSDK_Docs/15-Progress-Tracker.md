@@ -199,6 +199,7 @@
 
 | 日期 | 变更内容 | 操作人 |
 |------|----------|--------|
+| 2026-01-05 | 完成 HMAC 从 D1 读取 app_key，/v1/sdk/config 数据化，Admin CORS 与 packages 列表接口补齐 | AI |
 | 2026-01-05 | 完成 Cloudflare 迁移 Stage 1-7，本地验证通过，Admin 路由补齐（Apps/Placements/Variants/Experiments/Rulesets/Events） | AI |
 | 2026-01-05 | 修复迁移脚本命名冲突，修复 Web Admin 构建/tsc 报错并调整 lint 脚本，验证 /v1/sdk/config HMAC/规则/实验（事件上报待 DB 环境） | AI |
 | 2026-01-05 | 第四阶段并行开发：Web API接入、Analytics Sinks、数仓ETL | AI 协作 |

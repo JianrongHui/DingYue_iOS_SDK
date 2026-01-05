@@ -14,9 +14,31 @@ type Manifest = {
 };
 
 type PackageError = {
-  status: number;
+  status: 400;
   code: string;
   message: string;
+};
+
+type PackageRow = {
+  id: string;
+  app_id: string;
+  placement_id: string;
+  version: string;
+  checksum: string;
+  entry_path: string;
+  cdn_url: string;
+  size_bytes: number;
+  created_at: string;
+};
+
+type PlacementRow = {
+  placement_id: string;
+  type: Manifest['placement_type'];
+};
+
+type VariantPackageRow = {
+  package_id: string;
+  enabled: number;
 };
 
 type StorageKeyParts = {
@@ -29,9 +51,78 @@ const MANIFEST_NAME = 'manifest.json';
 const ALLOWED_PLACEMENT_TYPES = new Set<Manifest['placement_type']>(['paywall', 'guide']);
 
 export function registerPackagesModule(app: Hono<AppContext>): void {
+  app.get('/v1/admin/packages', handleList);
   app.post('/v1/admin/packages/presign', handlePresign);
   app.put('/v1/admin/packages/upload/:package_id', handleUpload);
   app.post('/v1/admin/packages/commit', handleCommit);
+}
+
+async function handleList(c: Context<AppContext>): Promise<Response> {
+  try {
+    const appId = readString(c.req.query('app_id'));
+    const placementId = readString(c.req.query('placement_id'));
+    const { where, params } = buildPackageFilters(appId, placementId);
+
+    const db = c.get('db');
+    const [packagesResult, placementsResult, variantsResult] = await Promise.all([
+      db.query<PackageRow>(
+        `select id, app_id, placement_id, version, checksum, entry_path, cdn_url, size_bytes, created_at
+         from packages ${where} order by created_at desc`,
+        params
+      ),
+      db.query<PlacementRow>(
+        `select placement_id, type
+         from placements ${where}`,
+        params
+      ),
+      db.query<VariantPackageRow>(
+        `select package_id, enabled
+         from variants ${where}`,
+        params
+      )
+    ]);
+
+    const placementTypes = new Map<string, Manifest['placement_type']>();
+    for (const row of placementsResult.rows) {
+      placementTypes.set(row.placement_id, row.type);
+    }
+
+    const activePackages = new Set(
+      variantsResult.rows
+        .filter((row) => row.enabled === 1)
+        .map((row) => row.package_id)
+    );
+
+    const response = packagesResult.rows.map((row) => {
+      const placementType = placementTypes.get(row.placement_id) ?? 'paywall';
+      const status = activePackages.has(row.id) ? 'active' : 'inactive';
+
+      return {
+        id: row.id,
+        app_id: row.app_id,
+        placement_id: row.placement_id,
+        version: row.version,
+        checksum: row.checksum,
+        entry_path: row.entry_path,
+        cdn_url: row.cdn_url,
+        size_bytes: row.size_bytes,
+        status,
+        manifest: {
+          manifest_version: 1,
+          placement_type: placementType,
+          package_version: row.version,
+          entry_path: row.entry_path,
+          checksum: row.checksum
+        },
+        created_at: row.created_at
+      };
+    });
+
+    return c.json(response, 200);
+  } catch (error) {
+    console.error('Failed to list packages', error);
+    return sendInternalError(c, 'failed to list packages');
+  }
 }
 
 async function handlePresign(c: Context<AppContext>): Promise<Response> {
@@ -290,6 +381,30 @@ function buildUploadUrl(
   return url.toString();
 }
 
+function buildPackageFilters(
+  appId: string | undefined,
+  placementId: string | undefined
+): { where: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (appId) {
+    conditions.push('app_id = ?');
+    params.push(appId);
+  }
+
+  if (placementId) {
+    conditions.push('placement_id = ?');
+    params.push(placementId);
+  }
+
+  if (conditions.length === 0) {
+    return { where: '', params };
+  }
+
+  return { where: `where ${conditions.join(' and ')}`, params };
+}
+
 function buildCdnUrl(storageKey: string, env: AppContext['Bindings']): string {
   const base = readString(env.CDN_BASE_URL);
   if (!base) {
@@ -426,7 +541,7 @@ function bufferToHex(buffer: ArrayBuffer): string {
 
 function isPackageError(value: unknown): value is PackageError {
   return (
-    Boolean(value) &&
+    value !== null &&
     typeof value === 'object' &&
     'status' in value &&
     'code' in value &&

@@ -11,4 +11,5 @@ export interface Env {
   ANALYTICS_ENABLED?: string;
   FIREBASE_ENABLED?: string;
   CDN_BASE_URL?: string;
+  CORS_ALLOWED_ORIGINS?: string;
 }

@@ -9,11 +9,20 @@ const HEADER_SIGNATURE = 'x-signature';
 
 const ALLOWED_TIME_SKEW_SEC = 5 * 60;
 const NONCE_TTL_MS = 10 * 60 * 1000;
+const APP_CACHE_TTL_MS = 5 * 60 * 1000;
 
-// TODO: Replace with persistent app credential lookup.
-const APP_KEYS: Record<string, string> = {
-  app_x: 'app_key_x'
+type AppCredentialRow = {
+  app_key: string;
+  status: string;
 };
+
+type CachedApp = {
+  appKey: string;
+  status: string;
+  expiresAt: number;
+};
+
+const appCache = new Map<string, CachedApp>();
 
 export const hmacAuth: MiddlewareHandler<AppContext> = async (c, next) => {
   const appId = getHeaderValue(c, HEADER_APP_ID);
@@ -21,10 +30,14 @@ export const hmacAuth: MiddlewareHandler<AppContext> = async (c, next) => {
     return unauthorized(c, 'missing X-App-Id header');
   }
 
-  const appKey = APP_KEYS[appId];
-  if (!appKey) {
+  const appRecord = await getAppCredential(c, appId);
+  if (!appRecord) {
     return unauthorized(c, 'unknown X-App-Id');
   }
+  if (appRecord.status !== 'active') {
+    return unauthorized(c, 'app is disabled');
+  }
+  const appKey = appRecord.appKey;
 
   const timestampHeader = getHeaderValue(c, HEADER_TIMESTAMP);
   if (!timestampHeader) {
@@ -93,6 +106,39 @@ function getHeaderValue(c: Context<AppContext>, headerName: string): string | nu
   return trimmed.length > 0 ? trimmed : null;
 }
 
+async function getAppCredential(
+  c: Context<AppContext>,
+  appId: string
+): Promise<CachedApp | null> {
+  const cached = appCache.get(appId);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached;
+  }
+
+  const db = c.get('db');
+  const result = await db.query<AppCredentialRow>(
+    'select app_key, status from apps where app_id = ?',
+    [appId]
+  );
+
+  const row = result.rows[0];
+  const appKey = readString(row?.app_key);
+  const status = readString(row?.status);
+
+  if (!appKey || !status) {
+    appCache.delete(appId);
+    return null;
+  }
+
+  const record: CachedApp = {
+    appKey,
+    status,
+    expiresAt: Date.now() + APP_CACHE_TTL_MS
+  };
+  appCache.set(appId, record);
+  return record;
+}
+
 function getCanonicalPath(c: Context<AppContext>): string {
   const path = c.req.path;
   return path || '/';
@@ -157,6 +203,15 @@ function bufferToHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
+}
+
+function readString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function unauthorized(c: Context<AppContext>, message: string): Response {

@@ -381,6 +381,11 @@ const manifest = JSON.parse(new TextDecoder().decode(manifestData));
 VITE_API_BASE_URL=https://dingyue-sdk-api.<your-subdomain>.workers.dev
 ```
 
+可选：限制管理后台跨域来源
+```
+CORS_ALLOWED_ORIGINS=https://admin.<your-subdomain>.pages.dev
+```
+
 ---
 
 ### 第七阶段：部署

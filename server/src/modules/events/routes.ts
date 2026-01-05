@@ -20,6 +20,11 @@ export function registerEventsRoutes(app: Hono<AppContext>): void {
 }
 
 async function handleEvents(c: Context<AppContext>): Promise<Response> {
+  const appId = c.get('appId');
+  if (!appId) {
+    return sendUnauthorized(c, 'missing app context');
+  }
+
   let payload: unknown;
   try {
     payload = await c.req.json();
@@ -39,7 +44,7 @@ async function handleEvents(c: Context<AppContext>): Promise<Response> {
     return sendValidationError(c, 'events must be an array');
   }
 
-  const parsed = parseEvents(rawEvents);
+  const parsed = parseEvents(rawEvents, appId);
 
   if (parsed.error) {
     return sendValidationError(c, parsed.error);
@@ -72,7 +77,10 @@ async function handleEvents(c: Context<AppContext>): Promise<Response> {
   }
 }
 
-function parseEvents(rawEvents: unknown[]): { events: StoredEvent[]; error?: string } {
+function parseEvents(
+  rawEvents: unknown[],
+  expectedAppId: string
+): { events: StoredEvent[]; error?: string } {
   const events: StoredEvent[] = [];
 
   for (let index = 0; index < rawEvents.length; index += 1) {
@@ -98,6 +106,9 @@ function parseEvents(rawEvents: unknown[]): { events: StoredEvent[]; error?: str
     }
     if (!appId) {
       return { events: [], error: `events[${index}].app_id is required` };
+    }
+    if (appId !== expectedAppId) {
+      return { events: [], error: `events[${index}].app_id does not match X-App-Id` };
     }
 
   const createdAt = new Date(timestamp);
@@ -177,6 +188,16 @@ function sendValidationError(c: Context<AppContext>, message: string): Response 
       message
     },
     400
+  );
+}
+
+function sendUnauthorized(c: Context<AppContext>, message: string): Response {
+  return c.json(
+    {
+      error: 'unauthorized',
+      message
+    },
+    401
   );
 }
 

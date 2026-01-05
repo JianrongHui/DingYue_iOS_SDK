@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import { initDb } from './lib/db';
+import { corsMiddleware } from './middleware/cors';
 import { hmacAuth } from './middleware/hmac';
 import { requestIdMiddleware } from './middleware/request_id';
 import { registerAnalyticsSinksRoutes } from './modules/analytics-sinks';
@@ -18,6 +19,7 @@ import type { AppContext } from './types/hono';
 
 const app = new Hono<AppContext>();
 
+app.use('*', corsMiddleware);
 app.use('*', requestIdMiddleware);
 app.use('*', async (c, next) => {
   c.set('db', initDb(c.env.DB));
