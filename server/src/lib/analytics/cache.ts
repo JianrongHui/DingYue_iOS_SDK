@@ -63,5 +63,6 @@ async function queryEnabledSinks(db: Pool, appId: string): Promise<SinkCacheStat
     [appId]
   );
 
-  return { sinks, hasAny: presence.rowCount > 0 };
+  const hasAny = (presence.rowCount ?? 0) > 0;
+  return { sinks, hasAny };
 }

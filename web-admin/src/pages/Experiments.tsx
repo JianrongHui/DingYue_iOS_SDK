@@ -726,7 +726,7 @@ export default function ExperimentsPage() {
           <ul className="stack-list">
             <li>traffic: 0-100 percentage of users entering the experiment</li>
             <li>bucket = hash(seed + user_id) % 100</li>
-            <li>bucket >= traffic uses default variant</li>
+            <li>bucket &gt;= traffic uses default variant</li>
             <li>bucket &lt; traffic uses weighted variants</li>
           </ul>
         </div>

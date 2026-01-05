@@ -4,7 +4,7 @@ import { getErrorMessage, shouldUseFallback } from "../api/client";
 import { queryEvents } from "../api/events";
 import { listPlacementsByApps } from "../api/placements";
 import { listVariantsByPlacements } from "../api/variants";
-import type { App, EventDetail, EventSummary, Placement, Variant } from "../api/types";
+import type { App, EventDetail, Placement, Variant } from "../api/types";
 import { seedApps, seedPlacements, seedVariants } from "../data/admin_seed";
 
 interface QueryFilters {

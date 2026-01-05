@@ -492,7 +492,7 @@ export default function PackagesPage() {
     }
     setError(null);
     setSuccess(null);
-    const nextPackages = packages.map((pkg) => {
+    const nextPackages = packages.map((pkg): PackageRecord => {
       if (pkg.app_id !== target.app_id || pkg.placement_id !== target.placement_id) {
         return pkg;
       }
@@ -530,7 +530,7 @@ export default function PackagesPage() {
       setError("No previous version available for rollback.");
       return;
     }
-    const nextPackages = packages.map((pkg) => {
+    const nextPackages = packages.map((pkg): PackageRecord => {
       if (pkg.app_id !== target.app_id || pkg.placement_id !== target.placement_id) {
         return pkg;
       }
