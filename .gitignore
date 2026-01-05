@@ -1,3 +1,13 @@
 # Xcode user-specific data
 **/xcuserdata/
 **/node_modules/
+
+# Build artifacts
+**/dist/
+**/*.tsbuildinfo
+web-admin/vite.config.js
+web-admin/vite.config.d.ts
+
+# Environment files
+.env.local
+.env.*.local
