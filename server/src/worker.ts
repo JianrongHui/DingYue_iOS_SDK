@@ -4,10 +4,16 @@ import { initDb } from './lib/db';
 import { hmacAuth } from './middleware/hmac';
 import { requestIdMiddleware } from './middleware/request_id';
 import { registerAnalyticsSinksRoutes } from './modules/analytics-sinks';
+import { registerAppsRoutes } from './modules/apps';
+import { registerAdminEventsRoutes } from './modules/admin-events';
 import { registerConfigRoutes } from './modules/config';
 import { registerEtlRoutes } from './modules/etl';
 import { registerEventsRoutes } from './modules/events';
+import { registerExperimentsRoutes } from './modules/experiments';
 import { registerPackagesModule } from './modules/packages';
+import { registerPlacementsRoutes } from './modules/placements';
+import { registerRulesetsRoutes } from './modules/rulesets';
+import { registerVariantsRoutes } from './modules/variants';
 import type { AppContext } from './types/hono';
 
 const app = new Hono<AppContext>();
@@ -37,6 +43,12 @@ registerEtlRoutes(app);
 registerEventsRoutes(app);
 registerAnalyticsSinksRoutes(app);
 registerPackagesModule(app);
+registerAppsRoutes(app);
+registerPlacementsRoutes(app);
+registerVariantsRoutes(app);
+registerExperimentsRoutes(app);
+registerRulesetsRoutes(app);
+registerAdminEventsRoutes(app);
 
 app.onError((error, c) => {
   console.error('Unhandled error', error);
