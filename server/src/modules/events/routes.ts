@@ -1,6 +1,6 @@
 import { Express, Request, Response } from 'express';
 
-import { createAnalyticsForwarderFromEnv, type SDKEvent } from '../../lib/analytics';
+import { createAnalyticsForwarder, type SDKEvent } from '../../lib/analytics';
 import { getDbPool } from '../../lib/db';
 
 type JsonObject = Record<string, unknown>;
@@ -14,8 +14,6 @@ type StoredEvent = {
 };
 
 const SDK_EVENTS_PATH = '/v1/sdk/events';
-const analyticsForwarder = createAnalyticsForwarderFromEnv();
-
 export function registerEventsRoutes(app: Express): void {
   app.post(SDK_EVENTS_PATH, handleEvents);
 }
@@ -172,7 +170,24 @@ function sendValidationError(res: Response, message: string): void {
 }
 
 async function forwardAnalyticsEvents(events: StoredEvent[]): Promise<void> {
+  const pool = getDbPool();
+  const grouped = new Map<string, StoredEvent[]>();
+
+  for (const event of events) {
+    const list = grouped.get(event.app_id);
+    if (list) {
+      list.push(event);
+    } else {
+      grouped.set(event.app_id, [event]);
+    }
+  }
+
   await Promise.all(
-    events.map((event) => analyticsForwarder.forward(event.payload as SDKEvent))
+    Array.from(grouped.entries()).map(async ([appId, appEvents]) => {
+      const forwarder = await createAnalyticsForwarder(pool, appId);
+      await Promise.all(
+        appEvents.map((event) => forwarder.forward(event.payload as SDKEvent))
+      );
+    })
   );
 }

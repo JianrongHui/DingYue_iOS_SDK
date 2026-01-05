@@ -374,6 +374,18 @@ tbody td {
   gap: 8px;
 }
 
+.config-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .table-select {
   min-width: 160px;
 }

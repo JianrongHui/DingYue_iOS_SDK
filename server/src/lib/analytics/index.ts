@@ -1,5 +1,9 @@
+import { Pool } from 'pg';
+
 import { FirebaseForwarder } from './firebase';
 import { GA4Forwarder } from './ga4';
+import { getSinksForApp } from './cache';
+import type { AnalyticsSink } from '../../modules/analytics-sinks/types';
 import type { AnalyticsForwarder, SDKEvent } from './types';
 
 export { FirebaseForwarder } from './firebase';
@@ -23,15 +27,23 @@ export function createAnalyticsForwarderFromEnv(): AnalyticsForwarder {
     forwarders.push(firebaseForwarder);
   }
 
+  return composeForwarders(forwarders);
+}
+
+export async function createAnalyticsForwarder(
+  db: Pool,
+  appId: string
+): Promise<AnalyticsForwarder> {
+  const { sinks, hasAny } = await getSinksForApp(db, appId);
+  const forwarders = sinks
+    .map((sink) => buildForwarderFromSink(sink))
+    .filter((forwarder): forwarder is AnalyticsForwarder => Boolean(forwarder));
+
   if (forwarders.length === 0) {
-    return new NoopForwarder();
+    return hasAny ? new NoopForwarder() : createAnalyticsForwarderFromEnv();
   }
 
-  if (forwarders.length === 1) {
-    return forwarders[0];
-  }
-
-  return new MultiForwarder(forwarders);
+  return composeForwarders(forwarders);
 }
 
 class NoopForwarder implements AnalyticsForwarder {
@@ -54,6 +66,36 @@ class MultiForwarder implements AnalyticsForwarder {
 
     return results.some(Boolean);
   }
+}
+
+function composeForwarders(forwarders: AnalyticsForwarder[]): AnalyticsForwarder {
+  if (forwarders.length === 0) {
+    return new NoopForwarder();
+  }
+
+  if (forwarders.length === 1) {
+    return forwarders[0];
+  }
+
+  return new MultiForwarder(forwarders);
+}
+
+function buildForwarderFromSink(sink: AnalyticsSink): AnalyticsForwarder | undefined {
+  if (sink.type === 'ga4') {
+    return new GA4Forwarder({
+      measurementId: sink.config.measurement_id,
+      apiSecret: sink.config.api_secret
+    });
+  }
+
+  if (sink.type === 'firebase') {
+    return new FirebaseForwarder({
+      appId: sink.config.app_id,
+      apiSecret: sink.config.api_secret
+    });
+  }
+
+  return;
 }
 
 function createGa4ForwarderFromEnv(): GA4Forwarder | undefined {

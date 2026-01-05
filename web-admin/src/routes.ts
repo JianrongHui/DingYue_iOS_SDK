@@ -1,5 +1,6 @@
 import AppsPage from "./pages/Apps";
 import AnalyticsPage from "./pages/Analytics";
+import AnalyticsSinksPage from "./pages/AnalyticsSinks";
 import EventsPage from "./pages/Events";
 import ExperimentsPage from "./pages/Experiments";
 import PackagesPage from "./pages/Packages";
@@ -64,6 +65,13 @@ export const routes: RouteConfig[] = [
     description: "Query events by time, placement, and name.",
     nav_group: "Insights",
     component: EventsPage
+  },
+  {
+    path: "/analytics-sinks",
+    label: "Analytics Sinks",
+    description: "Manage GA4 and Firebase forwarding destinations.",
+    nav_group: "Insights",
+    component: AnalyticsSinksPage
   },
   {
     path: "/analytics",

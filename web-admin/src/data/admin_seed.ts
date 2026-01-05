@@ -34,6 +34,32 @@ export type Variant = {
   created_at: string;
 };
 
+export type AnalyticsSink =
+  | {
+      id: string;
+      app_id: string;
+      type: "ga4";
+      config: {
+        measurement_id: string;
+        api_secret: string;
+      };
+      enabled: boolean;
+      created_at: string;
+      updated_at: string;
+    }
+  | {
+      id: string;
+      app_id: string;
+      type: "firebase";
+      config: {
+        app_id: string;
+        api_secret: string;
+      };
+      enabled: boolean;
+      created_at: string;
+      updated_at: string;
+    };
+
 export const seedApps: App[] = [
   {
     id: "app_9f21",
@@ -184,5 +210,32 @@ export const seedVariants: Variant[] = [
       auto_close_on_restore: false
     },
     created_at: "2024-02-05"
+  }
+];
+
+export const seedAnalyticsSinks: AnalyticsSink[] = [
+  {
+    id: "sink_001",
+    app_id: "app_9f21",
+    type: "ga4",
+    config: {
+      measurement_id: "G-12345ABC",
+      api_secret: "ga4_secret_123"
+    },
+    enabled: true,
+    created_at: "2024-02-01",
+    updated_at: "2024-02-10"
+  },
+  {
+    id: "sink_002",
+    app_id: "app_7a10",
+    type: "firebase",
+    config: {
+      app_id: "1:1234567890:ios:abc123def456",
+      api_secret: "fb_secret_456"
+    },
+    enabled: false,
+    created_at: "2024-02-08",
+    updated_at: "2024-02-08"
   }
 ];
