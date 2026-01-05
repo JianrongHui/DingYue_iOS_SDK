@@ -1,10 +1,5 @@
-import { createHash } from 'crypto';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-import AdmZip from 'adm-zip';
+import { unzipSync } from 'fflate';
 import type { Context, Hono } from 'hono';
-import { v4 as uuidv4 } from 'uuid';
 
 import type { AppContext } from '../../types/hono';
 
@@ -18,55 +13,30 @@ type Manifest = {
   checksum?: string;
 };
 
-type PendingPackage = {
-  package_id: string;
-  app_id: string;
-  placement_id: string;
-  storage_key: string;
-  upload_path: string;
-};
-
-type StoredPackage = {
-  package_id: string;
-  app_id: string;
-  placement_id?: string;
-  storage_key: string;
-  version: string;
-  checksum: string;
-  cdn_url: string;
-  entry_path: string;
-  size_bytes: number;
-  created_at: string;
-};
-
 type PackageError = {
   status: number;
   code: string;
   message: string;
 };
 
-const LOCAL_STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
-const LOCAL_CDN_ROOT = path.resolve(process.cwd(), 'cdn');
+type StorageKeyParts = {
+  appId: string;
+  placementId: string;
+  packageId: string;
+};
+
 const MANIFEST_NAME = 'manifest.json';
 const ALLOWED_PLACEMENT_TYPES = new Set<Manifest['placement_type']>(['paywall', 'guide']);
-const pendingPackages = new Map<string, PendingPackage>();
-const storedPackages = new Map<string, StoredPackage>();
 
 export function registerPackagesModule(app: Hono<AppContext>): void {
   app.post('/v1/admin/packages/presign', handlePresign);
+  app.put('/v1/admin/packages/upload/:package_id', handleUpload);
   app.post('/v1/admin/packages/commit', handleCommit);
 }
 
 async function handlePresign(c: Context<AppContext>): Promise<Response> {
   try {
-    let payload: unknown;
-    try {
-      payload = await c.req.json();
-    } catch (_error) {
-      return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
-    }
-
-    const body = asObject(payload);
+    const body = await readJsonBody(c);
 
     if (!body) {
       return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
@@ -86,26 +56,17 @@ async function handlePresign(c: Context<AppContext>): Promise<Response> {
 
     const packageId = createPackageId();
     const storageKey = buildStorageKey(appId, placementId, packageId);
-    const uploadPath = resolveStoragePath(storageKey, LOCAL_STORAGE_ROOT);
 
-    if (!uploadPath) {
+    if (!storageKey) {
       return sendValidationError(c, 'INVALID_STORAGE_KEY', 'storage_key is invalid');
     }
 
-    await fs.mkdir(path.dirname(uploadPath), { recursive: true });
-
-    pendingPackages.set(packageId, {
-      package_id: packageId,
-      app_id: appId,
-      placement_id: placementId,
-      storage_key: storageKey,
-      upload_path: uploadPath
-    });
+    const uploadUrl = buildUploadUrl(c, packageId, storageKey);
 
     return c.json(
       {
         package_id: packageId,
-        upload_url: uploadPath,
+        upload_url: uploadUrl,
         storage_key: storageKey
       },
       200
@@ -116,16 +77,45 @@ async function handlePresign(c: Context<AppContext>): Promise<Response> {
   }
 }
 
-async function handleCommit(c: Context<AppContext>): Promise<Response> {
+async function handleUpload(c: Context<AppContext>): Promise<Response> {
   try {
-    let payload: unknown;
-    try {
-      payload = await c.req.json();
-    } catch (_error) {
-      return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
+    const packageId = readString(c.req.param('package_id'));
+    const storageKey = readString(c.req.query('storage_key'));
+
+    if (!packageId || !storageKey) {
+      return sendValidationError(
+        c,
+        'INVALID_REQUEST',
+        'package_id and storage_key are required'
+      );
     }
 
-    const body = asObject(payload);
+    const parsed = parseStorageKey(storageKey);
+    if (!parsed || parsed.packageId !== packageId) {
+      return sendValidationError(c, 'INVALID_STORAGE_KEY', 'storage_key is invalid');
+    }
+
+    const buffer = await c.req.raw.arrayBuffer();
+    if (buffer.byteLength === 0) {
+      return sendValidationError(c, 'INVALID_REQUEST', 'upload body is empty');
+    }
+
+    await c.env.R2.put(storageKey, buffer, {
+      httpMetadata: {
+        contentType: 'application/zip'
+      }
+    });
+
+    return c.json({ ok: true }, 200);
+  } catch (error) {
+    console.error('Failed to upload package', error);
+    return sendInternalError(c, 'failed to upload package');
+  }
+}
+
+async function handleCommit(c: Context<AppContext>): Promise<Response> {
+  try {
+    const body = await readJsonBody(c);
 
     if (!body) {
       return sendValidationError(c, 'INVALID_REQUEST', 'body must be an object');
@@ -143,108 +133,70 @@ async function handleCommit(c: Context<AppContext>): Promise<Response> {
       );
     }
 
-    const pendingPackage = pendingPackages.get(packageId);
-
-    if (pendingPackage) {
-      if (pendingPackage.app_id !== appId) {
-        return sendValidationError(
-          c,
-          'INVALID_REQUEST',
-          'app_id does not match presign record'
-        );
-      }
-      if (pendingPackage.storage_key !== storageKey) {
-        return sendValidationError(
-          c,
-          'INVALID_REQUEST',
-          'storage_key does not match presign record'
-        );
-      }
-    }
-
-    if (!storageKey.startsWith(`packages/${appId}/`)) {
-      return sendValidationError(
-        c,
-        'INVALID_STORAGE_KEY',
-        'storage_key must start with packages/{app_id}/'
-      );
-    }
-
-    const storagePath = resolveStoragePath(storageKey, LOCAL_STORAGE_ROOT);
-
-    if (!storagePath) {
+    const parsedKey = parseStorageKey(storageKey);
+    if (!parsedKey) {
       return sendValidationError(c, 'INVALID_STORAGE_KEY', 'storage_key is invalid');
     }
+    if (parsedKey.packageId !== packageId || parsedKey.appId !== appId) {
+      return sendValidationError(c, 'INVALID_REQUEST', 'storage_key does not match request');
+    }
 
-    let fileBuffer: Buffer;
-    let sizeBytes: number;
-
-    try {
-      const stat = await fs.stat(storagePath);
-      sizeBytes = stat.size;
-      fileBuffer = await fs.readFile(storagePath);
-    } catch (error) {
+    const object = await c.env.R2.get(storageKey);
+    if (!object) {
       return sendValidationError(c, 'UPLOAD_NOT_FOUND', 'uploaded package not found');
     }
 
-    const checksum = computeChecksum(fileBuffer);
-    const zip = new AdmZip(fileBuffer);
-    const manifestResult = readManifest(zip);
+    const buffer = await object.arrayBuffer();
+    const sizeBytes = buffer.byteLength;
+    const checksum = await computeChecksum(buffer);
 
-    if (manifestResult.error) {
-      return sendPackageError(c, manifestResult.error);
-    }
-
-    const manifest = manifestResult.manifest;
-    const normalizedEntryPath = normalizeZipPath(manifest.entry_path);
-    const entry = findZipEntry(zip, normalizedEntryPath);
-
-    if (!entry || entry.isDirectory) {
+    let manifestResult: { manifest: Manifest; entryPath: string };
+    try {
+      manifestResult = validateZip(buffer);
+    } catch (error) {
+      if (isPackageError(error)) {
+        return sendPackageError(c, error);
+      }
+      console.error('Invalid package zip', error);
       return sendPackageError(c, {
         status: 400,
-        code: 'ENTRY_NOT_FOUND',
-        message: `entry_path ${manifest.entry_path} not found`
+        code: 'INVALID_ZIP',
+        message: 'invalid zip file'
       });
     }
 
-    const cdnPath = resolveStoragePath(storageKey, LOCAL_CDN_ROOT);
+    const { manifest, entryPath } = manifestResult;
+    const cdnUrl = buildCdnUrl(storageKey, c.env);
+    const createdAt = new Date().toISOString();
 
-    if (!cdnPath) {
-      return sendValidationError(
-        c,
-        'INVALID_STORAGE_KEY',
-        'storage_key is invalid for cdn path'
-      );
-    }
-
-    await fs.mkdir(path.dirname(cdnPath), { recursive: true });
-    await fs.copyFile(storagePath, cdnPath);
-
-    const cdnUrl = cdnPath;
-    const record: StoredPackage = {
-      package_id: packageId,
-      app_id: appId,
-      placement_id: pendingPackage?.placement_id,
-      storage_key: storageKey,
-      version: manifest.package_version,
-      checksum,
-      cdn_url: cdnUrl,
-      entry_path: normalizedEntryPath,
-      size_bytes: sizeBytes,
-      created_at: new Date().toISOString()
-    };
-
-    storedPackages.set(packageId, record);
-    pendingPackages.delete(packageId);
+    const db = c.get('db');
+    await db.execute(
+      `insert into packages
+        (id, app_id, placement_id, version, checksum, entry_path, cdn_url, size_bytes, created_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        packageId,
+        appId,
+        parsedKey.placementId,
+        manifest.package_version,
+        checksum,
+        entryPath,
+        cdnUrl,
+        sizeBytes,
+        createdAt
+      ]
+    );
 
     return c.json(
       {
-        package_id: record.package_id,
-        version: record.version,
-        checksum: record.checksum,
-        cdn_url: record.cdn_url,
-        entry_path: record.entry_path,
-        size_bytes: record.size_bytes
+        package_id: packageId,
+        placement_id: parsedKey.placementId,
+        version: manifest.package_version,
+        checksum,
+        cdn_url: cdnUrl,
+        entry_path: entryPath,
+        size_bytes: sizeBytes,
+        created_at: createdAt
       },
       200
     );
@@ -255,7 +207,16 @@ async function handleCommit(c: Context<AppContext>): Promise<Response> {
 }
 
 function createPackageId(): string {
-  return `pkg_${uuidv4()}`;
+  return `pkg_${crypto.randomUUID()}`;
+}
+
+async function readJsonBody(c: Context<AppContext>): Promise<JsonObject | null> {
+  try {
+    const parsed = await c.req.json();
+    return asObject(parsed) ?? null;
+  } catch (_error) {
+    return null;
+  }
 }
 
 function asObject(value: unknown): JsonObject | undefined {
@@ -283,110 +244,136 @@ function readNumber(value: unknown): number | undefined {
   return value;
 }
 
-function buildStorageKey(appId: string, placementId: string, packageId: string): string {
-  return path.posix.join('packages', appId, placementId, `${packageId}.zip`);
-}
-
-function resolveStoragePath(storageKey: string, root: string): string | null {
-  const normalizedKey = storageKey.replace(/\\/g, '/');
-  const resolvedPath = path.resolve(root, normalizedKey);
-  const relative = path.relative(root, resolvedPath);
-
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+function buildStorageKey(appId: string, placementId: string, packageId: string): string | null {
+  if (!isSafeSegment(appId) || !isSafeSegment(placementId) || !isSafeSegment(packageId)) {
     return null;
   }
 
-  return resolvedPath;
+  return `packages/${appId}/${placementId}/${packageId}.zip`;
 }
 
-function normalizeZipPath(value: string): string {
-  const normalized = value.replace(/\\/g, '/');
-  return normalized.replace(/^(\.\/)+/, '').replace(/^\/+/, '');
+function parseStorageKey(storageKey: string): StorageKeyParts | null {
+  const normalized = storageKey.replace(/\\/g, '/').replace(/^\/+/, '');
+  const parts = normalized.split('/');
+  if (parts.length !== 4) {
+    return null;
+  }
+  if (parts[0] !== 'packages') {
+    return null;
+  }
+  const [_, appId, placementId, filename] = parts;
+  if (!filename.endsWith('.zip')) {
+    return null;
+  }
+  const packageId = filename.slice(0, -4);
+  if (!packageId) {
+    return null;
+  }
+  return { appId, placementId, packageId };
 }
 
-function computeChecksum(buffer: Buffer): string {
-  return `sha256:${createHash('sha256').update(buffer).digest('hex')}`;
+function isSafeSegment(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+  return !value.includes('/') && !value.includes('\\') && !value.includes('..');
 }
 
-function readManifest(zip: AdmZip): { manifest: Manifest; error?: PackageError } {
-  const manifestEntry = findZipEntry(zip, MANIFEST_NAME);
+function buildUploadUrl(
+  c: Context<AppContext>,
+  packageId: string,
+  storageKey: string
+): string {
+  const url = new URL(c.req.url);
+  url.pathname = `/v1/admin/packages/upload/${packageId}`;
+  url.search = new URLSearchParams({ storage_key: storageKey }).toString();
+  return url.toString();
+}
 
-  if (!manifestEntry) {
-    return {
-      manifest: {} as Manifest,
-      error: {
-        status: 400,
-        code: 'MANIFEST_NOT_FOUND',
-        message: 'manifest.json not found'
-      }
-    };
+function buildCdnUrl(storageKey: string, env: AppContext['Bindings']): string {
+  const base = readString(env.CDN_BASE_URL);
+  if (!base) {
+    return storageKey;
+  }
+  const normalized = base.replace(/\/+$/, '');
+  return `${normalized}/${storageKey}`;
+}
+
+function validateZip(buffer: ArrayBuffer): { manifest: Manifest; entryPath: string } {
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(new Uint8Array(buffer));
+  } catch (error) {
+    throw error;
+  }
+
+  const manifestData = findZipEntry(files, MANIFEST_NAME);
+  if (!manifestData) {
+    throw {
+      status: 400,
+      code: 'MANIFEST_NOT_FOUND',
+      message: 'manifest.json not found'
+    } satisfies PackageError;
   }
 
   let parsed: unknown;
-
   try {
-    parsed = JSON.parse(manifestEntry.getData().toString('utf-8'));
-  } catch (error) {
-    return {
-      manifest: {} as Manifest,
-      error: {
-        status: 400,
-        code: 'INVALID_MANIFEST_JSON',
-        message: 'manifest.json is not valid JSON'
-      }
-    };
+    parsed = JSON.parse(new TextDecoder().decode(manifestData));
+  } catch (_error) {
+    throw {
+      status: 400,
+      code: 'INVALID_MANIFEST_JSON',
+      message: 'manifest.json is not valid JSON'
+    } satisfies PackageError;
   }
 
   const manifestObject = asObject(parsed);
-
   if (!manifestObject) {
-    return {
-      manifest: {} as Manifest,
-      error: {
-        status: 400,
-        code: 'INVALID_MANIFEST',
-        message: 'manifest.json must be an object'
-      }
-    };
+    throw {
+      status: 400,
+      code: 'INVALID_MANIFEST',
+      message: 'manifest.json must be an object'
+    } satisfies PackageError;
   }
 
   const manifestVersion = readNumber(manifestObject.manifest_version);
   const placementType = readString(manifestObject.placement_type);
   const packageVersion = readString(manifestObject.package_version);
-  const entryPath = readString(manifestObject.entry_path);
+  const entryPath = readString(manifestObject.entry_path) ?? 'index.html';
   const checksum = readString(manifestObject.checksum);
 
   if (!manifestVersion || manifestVersion !== 1) {
-    return {
-      manifest: {} as Manifest,
-      error: {
-        status: 400,
-        code: 'INVALID_MANIFEST_VERSION',
-        message: 'manifest_version must be 1'
-      }
-    };
+    throw {
+      status: 400,
+      code: 'INVALID_MANIFEST_VERSION',
+      message: 'manifest_version must be 1'
+    } satisfies PackageError;
   }
 
   if (!placementType || !ALLOWED_PLACEMENT_TYPES.has(placementType as Manifest['placement_type'])) {
-    return {
-      manifest: {} as Manifest,
-      error: {
-        status: 400,
-        code: 'INVALID_PLACEMENT_TYPE',
-        message: 'placement_type must be paywall or guide'
-      }
-    };
+    throw {
+      status: 400,
+      code: 'INVALID_PLACEMENT_TYPE',
+      message: 'placement_type must be paywall or guide'
+    } satisfies PackageError;
   }
 
-  if (!packageVersion || !entryPath) {
-    return {
-      manifest: {} as Manifest,
-      error: {
-        status: 400,
-        code: 'INVALID_MANIFEST',
-        message: 'package_version and entry_path are required'
-      }
-    };
+  if (!packageVersion) {
+    throw {
+      status: 400,
+      code: 'INVALID_MANIFEST',
+      message: 'package_version is required'
+    } satisfies PackageError;
+  }
+
+  const normalizedEntryPath = normalizeZipPath(entryPath);
+  const entry = findZipEntry(files, normalizedEntryPath);
+  if (!entry) {
+    throw {
+      status: 400,
+      code: 'ENTRY_NOT_FOUND',
+      message: `entry_path ${entryPath} not found`
+    } satisfies PackageError;
   }
 
   return {
@@ -394,27 +381,56 @@ function readManifest(zip: AdmZip): { manifest: Manifest; error?: PackageError }
       manifest_version: manifestVersion,
       placement_type: placementType as Manifest['placement_type'],
       package_version: packageVersion,
-      entry_path: entryPath,
+      entry_path: normalizedEntryPath,
       checksum: checksum || undefined
-    }
+    },
+    entryPath: normalizedEntryPath
   };
 }
 
-function findZipEntry(zip: AdmZip, targetPath: string): AdmZip.IZipEntry | null {
-  const normalizedTarget = normalizeZipPath(targetPath);
-  const direct = zip.getEntry(normalizedTarget);
+function normalizeZipPath(value: string): string {
+  const normalized = value.replace(/\\/g, '/');
+  return normalized.replace(/^(\.\/)+/, '').replace(/^\/+/, '');
+}
 
+function findZipEntry(
+  files: Record<string, Uint8Array>,
+  targetPath: string
+): Uint8Array | null {
+  const normalizedTarget = normalizeZipPath(targetPath);
+  const direct = files[normalizedTarget];
   if (direct) {
     return direct;
   }
 
   const lowerTarget = normalizedTarget.toLowerCase();
-  const entries = zip.getEntries();
+  for (const [entryName, data] of Object.entries(files)) {
+    if (normalizeZipPath(entryName).toLowerCase() === lowerTarget) {
+      return data;
+    }
+  }
 
+  return null;
+}
+
+async function computeChecksum(buffer: ArrayBuffer): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', buffer);
+  return `sha256:${bufferToHex(hash)}`;
+}
+
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function isPackageError(value: unknown): value is PackageError {
   return (
-    entries.find(
-      (entry) => normalizeZipPath(entry.entryName).toLowerCase() === lowerTarget
-    ) ?? null
+    Boolean(value) &&
+    typeof value === 'object' &&
+    'status' in value &&
+    'code' in value &&
+    'message' in value
   );
 }
 

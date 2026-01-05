@@ -10,4 +10,5 @@ export interface Env {
   FIREBASE_API_SECRET?: string;
   ANALYTICS_ENABLED?: string;
   FIREBASE_ENABLED?: string;
+  CDN_BASE_URL?: string;
 }
