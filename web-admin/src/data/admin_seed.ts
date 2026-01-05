@@ -1,38 +1,6 @@
-export type App = {
-  id: string;
-  app_id: string;
-  app_key: string;
-  name: string;
-  env: "prod" | "staging";
-  status: "active" | "disabled";
-  created_at: string;
-};
+import type { App, Placement, Variant } from "../api/types";
 
-export type Placement = {
-  id: string;
-  app_id: string;
-  placement_id: string;
-  type: "guide" | "paywall";
-  enabled: boolean;
-  default_variant_id: string | null;
-  created_at: string;
-};
-
-export type Variant = {
-  id: string;
-  app_id: string;
-  placement_id: string;
-  package_id: string;
-  offering_id: string;
-  product_ids: string[];
-  priority: number;
-  enabled: boolean;
-  page_options: {
-    auto_close_on_success: boolean;
-    auto_close_on_restore: boolean;
-  };
-  created_at: string;
-};
+export type { App, Placement, Variant } from "../api/types";
 
 export const seedApps: App[] = [
   {

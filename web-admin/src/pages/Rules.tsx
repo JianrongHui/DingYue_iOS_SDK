@@ -1,48 +1,26 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { listApps } from "../api/apps";
+import { getErrorMessage, shouldUseFallback } from "../api/client";
+import { listPlacementsByApps } from "../api/placements";
 import {
-  seedPlacements,
-  seedVariants,
-  type Placement,
-  type Variant
-} from "../data/admin_seed";
-import { generateId, getItems, setItems } from "../utils/storage";
-
-const PLACEMENTS_KEY = "dy_placements";
-const VARIANTS_KEY = "dy_variants";
-const RULES_KEY = "dy_rulesets";
-
-type MatchType = "all" | "any";
-type FieldType = "string" | "semver" | "number" | "boolean" | "array";
-type ConditionOperator =
-  | "eq"
-  | "ne"
-  | "in"
-  | "notIn"
-  | "gt"
-  | "gte"
-  | "lt"
-  | "lte"
-  | "contains"
-  | "regex";
-type ConditionValue = string | number | boolean | string[];
-
-type Condition = {
-  field: string;
-  op: ConditionOperator;
-  value: ConditionValue;
-};
-
-type RuleSet = {
-  id: string;
-  app_id: string;
-  placement_id: string;
-  priority: number;
-  match_type: MatchType;
-  conditions: Condition[];
-  variant_id: string;
-  experiment_id?: string;
-  created_at: string;
-};
+  createRuleset,
+  deleteRuleset,
+  listRulesetsByPlacements,
+  updateRuleset
+} from "../api/rulesets";
+import { listVariantsByPlacements } from "../api/variants";
+import type {
+  Condition,
+  ConditionOperator,
+  ConditionValue,
+  FieldType,
+  MatchType,
+  Placement,
+  RuleSet,
+  Variant
+} from "../api/types";
+import { seedPlacements, seedVariants } from "../data/admin_seed";
+import { generateId } from "../utils/storage";
 
 type FieldDefinition = {
   id: string;
@@ -470,52 +448,36 @@ export default function RulesPage() {
     evaluated: RuleSet[];
   } | null>(null);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const placementsRaw = window.localStorage.getItem(PLACEMENTS_KEY);
-      const storedPlacements = getItems<Placement>(PLACEMENTS_KEY);
-      const resolvedPlacements = placementsRaw ? storedPlacements : seedPlacements;
-      if (!placementsRaw) {
-        setItems(PLACEMENTS_KEY, seedPlacements);
-      }
-      setPlacements(resolvedPlacements);
-
-      const variantsRaw = window.localStorage.getItem(VARIANTS_KEY);
-      const storedVariants = getItems<Variant>(VARIANTS_KEY);
-      const resolvedVariants = variantsRaw ? storedVariants : seedVariants;
-      if (!variantsRaw) {
-        setItems(VARIANTS_KEY, seedVariants);
-      }
-      setVariants(resolvedVariants);
-
-      const rulesRaw = window.localStorage.getItem(RULES_KEY);
-      const storedRules = getItems<RuleSet>(RULES_KEY);
-      const resolvedRules = rulesRaw ? storedRules : [];
-      if (!rulesRaw) {
-        setItems<RuleSet>(RULES_KEY, []);
-      }
-      setRuleSets(resolvedRules);
+      const appsData = await listApps();
+      const placementsData = await listPlacementsByApps(
+        appsData.map((app) => app.app_id)
+      );
+      setPlacements(placementsData);
+      const variantsData = await listVariantsByPlacements(placementsData);
+      setVariants(variantsData);
+      const rulesetsData = await listRulesetsByPlacements(placementsData);
+      setRuleSets(rulesetsData);
     } catch (loadError) {
-      setError("Failed to load rulesets from localStorage.");
+      if (shouldUseFallback(loadError)) {
+        setPlacements(seedPlacements);
+        setVariants(seedVariants);
+        setRuleSets([]);
+        setError("API unavailable. Showing mock rulesets.");
+      } else {
+        setError(getErrorMessage(loadError));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
-
-  const saveRuleSets = (nextRuleSets: RuleSet[]) => {
-    setRuleSets(nextRuleSets);
-    try {
-      setItems(RULES_KEY, nextRuleSets);
-    } catch (saveError) {
-      setError("Failed to save rulesets to localStorage.");
-    }
-  };
 
   const sortedRuleSets = useMemo(() => {
     return [...rulesets].sort((a, b) => a.priority - b.priority);
@@ -641,27 +603,51 @@ export default function RulesPage() {
     }));
   };
 
-  const handleDelete = (ruleSet: RuleSet) => {
+  const handleDelete = async (ruleSet: RuleSet) => {
     if (!window.confirm(`Delete ruleset ${ruleSet.id}?`)) {
       return;
     }
-    const nextRuleSets = rulesets.filter((item) => item.id !== ruleSet.id);
-    saveRuleSets(nextRuleSets);
+    setError(null);
+    try {
+      await deleteRuleset(ruleSet.id);
+      setRuleSets((prev) => prev.filter((item) => item.id !== ruleSet.id));
+    } catch (deleteError) {
+      if (shouldUseFallback(deleteError)) {
+        setRuleSets((prev) => prev.filter((item) => item.id !== ruleSet.id));
+        setError("API unavailable. Deleted ruleset locally.");
+      } else {
+        setError(getErrorMessage(deleteError));
+      }
+    }
   };
 
-  const handlePriorityChange = (ruleSet: RuleSet, value: number) => {
-    const nextRuleSets = rulesets.map((item) =>
-      item.id === ruleSet.id
-        ? {
-            ...item,
-            priority: Number.isNaN(value) ? item.priority : value
-          }
-        : item
+  const handlePriorityChange = async (ruleSet: RuleSet, value: number) => {
+    const nextPriority = Number.isNaN(value) ? ruleSet.priority : value;
+    setRuleSets((prev) =>
+      prev.map((item) =>
+        item.id === ruleSet.id ? { ...item, priority: nextPriority } : item
+      )
     );
-    saveRuleSets(nextRuleSets);
+    try {
+      const updated = await updateRuleset(ruleSet.id, { priority: nextPriority });
+      setRuleSets((prev) =>
+        prev.map((item) => (item.id === ruleSet.id ? updated : item))
+      );
+    } catch (updateError) {
+      if (shouldUseFallback(updateError)) {
+        setError("API unavailable. Updated priority locally.");
+      } else {
+        setRuleSets((prev) =>
+          prev.map((item) =>
+            item.id === ruleSet.id ? { ...item, priority: ruleSet.priority } : item
+          )
+        );
+        setError(getErrorMessage(updateError));
+      }
+    }
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form.placement_id || !form.variant_id) {
       setError("placement_id and variant_id are required.");
@@ -699,14 +685,33 @@ export default function RulesPage() {
       created_at: editingRuleSet?.created_at ?? today()
     };
 
-    const nextRuleSets = editingRuleSet
-      ? rulesets.map((item) => (item.id === nextRuleSet.id ? nextRuleSet : item))
-      : [nextRuleSet, ...rulesets];
-
-    saveRuleSets(nextRuleSets);
     setError(null);
-    setModalOpen(false);
-    setEditingRuleSet(null);
+    try {
+      if (editingRuleSet) {
+        const updated = await updateRuleset(nextRuleSet.id, nextRuleSet);
+        setRuleSets((prev) =>
+          prev.map((item) => (item.id === nextRuleSet.id ? updated : item))
+        );
+      } else {
+        const created = await createRuleset(nextRuleSet);
+        setRuleSets((prev) => [created, ...prev]);
+      }
+      setModalOpen(false);
+      setEditingRuleSet(null);
+    } catch (saveError) {
+      if (shouldUseFallback(saveError)) {
+        setRuleSets((prev) =>
+          editingRuleSet
+            ? prev.map((item) => (item.id === nextRuleSet.id ? nextRuleSet : item))
+            : [nextRuleSet, ...prev]
+        );
+        setModalOpen(false);
+        setEditingRuleSet(null);
+        setError("API unavailable. Saved ruleset locally.");
+      } else {
+        setError(getErrorMessage(saveError));
+      }
+    }
   };
 
   const handleRunTest = () => {

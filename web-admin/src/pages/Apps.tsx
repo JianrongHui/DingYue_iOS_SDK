@@ -1,8 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { seedApps, type App } from "../data/admin_seed";
-import { generateId, getItems, setItems } from "../utils/storage";
-
-const APPS_KEY = "dy_apps";
+import { createApp, deleteApp, listApps, updateApp } from "../api/apps";
+import { getErrorMessage, shouldUseFallback } from "../api/client";
+import type { App } from "../api/types";
+import { seedApps } from "../data/admin_seed";
+import { generateId } from "../utils/storage";
 
 const statusClass = (status: string) => `status status-${status}`;
 
@@ -29,37 +30,27 @@ export default function AppsPage() {
     env: "prod" as App["env"]
   });
 
-  const loadApps = () => {
+  const loadApps = async () => {
     setLoading(true);
     setError(null);
     try {
-      const raw = window.localStorage.getItem(APPS_KEY);
-      const stored = getItems<App>(APPS_KEY);
-      if (!raw) {
-        setItems(APPS_KEY, seedApps);
-        setApps(seedApps);
-      } else {
-        setApps(stored);
-      }
+      const data = await listApps();
+      setApps(data);
     } catch (loadError) {
-      setError("Failed to load apps from localStorage.");
+      if (shouldUseFallback(loadError)) {
+        setApps(seedApps);
+        setError("API unavailable. Showing mock apps.");
+      } else {
+        setError(getErrorMessage(loadError));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadApps();
+    void loadApps();
   }, []);
-
-  const saveApps = (nextApps: App[]) => {
-    setApps(nextApps);
-    try {
-      setItems(APPS_KEY, nextApps);
-    } catch (saveError) {
-      setError("Failed to save apps to localStorage.");
-    }
-  };
 
   const summary = useMemo(() => {
     const total = apps.length;
@@ -89,20 +80,44 @@ export default function AppsPage() {
     });
   }, [apps, filterAppId, filterEnv]);
 
-  const handleToggleStatus = (target: App) => {
+  const handleToggleStatus = async (target: App) => {
     const nextStatus = target.status === "active" ? "disabled" : "active";
-    const nextApps = apps.map((app) =>
-      app.id === target.id ? { ...app, status: nextStatus } : app
-    );
-    saveApps(nextApps);
+    setError(null);
+    try {
+      const updated = await updateApp(target.app_id, { status: nextStatus });
+      setApps((prev) =>
+        prev.map((app) => (app.id === target.id ? updated : app))
+      );
+    } catch (updateError) {
+      if (shouldUseFallback(updateError)) {
+        setApps((prev) =>
+          prev.map((app) =>
+            app.id === target.id ? { ...app, status: nextStatus } : app
+          )
+        );
+        setError("API unavailable. Updated status locally.");
+      } else {
+        setError(getErrorMessage(updateError));
+      }
+    }
   };
 
-  const handleDelete = (target: App) => {
+  const handleDelete = async (target: App) => {
     if (!window.confirm(`Delete app ${target.app_id}?`)) {
       return;
     }
-    const nextApps = apps.filter((app) => app.id !== target.id);
-    saveApps(nextApps);
+    setError(null);
+    try {
+      await deleteApp(target.app_id);
+      setApps((prev) => prev.filter((app) => app.id !== target.id));
+    } catch (deleteError) {
+      if (shouldUseFallback(deleteError)) {
+        setApps((prev) => prev.filter((app) => app.id !== target.id));
+        setError("API unavailable. Deleted app locally.");
+      } else {
+        setError(getErrorMessage(deleteError));
+      }
+    }
   };
 
   const handleCopy = (value: string, label: string) => {
@@ -127,7 +142,7 @@ export default function AppsPage() {
     setCreatedSecrets(null);
   };
 
-  const handleCreate = (event: FormEvent<HTMLFormElement>) => {
+  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const name = createForm.name.trim();
     if (!name) {
@@ -135,23 +150,33 @@ export default function AppsPage() {
       return;
     }
 
-    const newAppId = buildShortId("app");
-    const newAppKey = buildShortId("key");
-    const newApp: App = {
-      id: generateId(),
-      app_id: newAppId,
-      app_key: newAppKey,
-      name,
-      env: createForm.env,
-      status: "active",
-      created_at: today()
-    };
-
-    const nextApps = [newApp, ...apps];
-    saveApps(nextApps);
     setError(null);
-    setCreatedSecrets({ app_id: newAppId, app_key: newAppKey });
-    setCreateForm({ name: "", env: "prod" });
+    try {
+      const created = await createApp({ name, env: createForm.env });
+      setApps((prev) => [created, ...prev]);
+      setCreatedSecrets({ app_id: created.app_id, app_key: created.app_key });
+      setCreateForm({ name: "", env: "prod" });
+    } catch (createError) {
+      if (shouldUseFallback(createError)) {
+        const newAppId = buildShortId("app");
+        const newAppKey = buildShortId("key");
+        const newApp: App = {
+          id: generateId(),
+          app_id: newAppId,
+          app_key: newAppKey,
+          name,
+          env: createForm.env,
+          status: "active",
+          created_at: today()
+        };
+        setApps((prev) => [newApp, ...prev]);
+        setCreatedSecrets({ app_id: newAppId, app_key: newAppKey });
+        setCreateForm({ name: "", env: "prod" });
+        setError("API unavailable. Created app locally.");
+      } else {
+        setError(getErrorMessage(createError));
+      }
+    }
   };
 
   return (

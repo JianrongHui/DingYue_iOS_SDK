@@ -1,17 +1,16 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { listApps } from "../api/apps";
+import { getErrorMessage, shouldUseFallback } from "../api/client";
 import {
-  seedApps,
-  seedPlacements,
-  seedVariants,
-  type App,
-  type Placement,
-  type Variant
-} from "../data/admin_seed";
-import { generateId, getItems, setItems } from "../utils/storage";
-
-const APPS_KEY = "dy_apps";
-const PLACEMENTS_KEY = "dy_placements";
-const VARIANTS_KEY = "dy_variants";
+  createVariant,
+  deleteVariant,
+  listVariantsByPlacements,
+  updateVariant
+} from "../api/variants";
+import { listPlacementsByApps } from "../api/placements";
+import type { App, Placement, Variant } from "../api/types";
+import { seedApps, seedPlacements, seedVariants } from "../data/admin_seed";
+import { generateId } from "../utils/storage";
 
 const statusClass = (status: string) => `status status-${status}`;
 
@@ -76,42 +75,34 @@ export default function VariantsPage() {
   const [editingVariant, setEditingVariant] = useState<Variant | null>(null);
   const [form, setForm] = useState<VariantFormState>(emptyFormState);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const appsRaw = window.localStorage.getItem(APPS_KEY);
-      const storedApps = getItems<App>(APPS_KEY);
-      const resolvedApps = appsRaw ? storedApps : seedApps;
-      if (!appsRaw) {
-        setItems(APPS_KEY, seedApps);
-      }
-      setApps(resolvedApps);
-
-      const placementsRaw = window.localStorage.getItem(PLACEMENTS_KEY);
-      const storedPlacements = getItems<Placement>(PLACEMENTS_KEY);
-      const resolvedPlacements = placementsRaw ? storedPlacements : seedPlacements;
-      if (!placementsRaw) {
-        setItems(PLACEMENTS_KEY, seedPlacements);
-      }
-      setPlacements(resolvedPlacements);
-
-      const variantsRaw = window.localStorage.getItem(VARIANTS_KEY);
-      const storedVariants = getItems<Variant>(VARIANTS_KEY);
-      const resolvedVariants = variantsRaw ? storedVariants : seedVariants;
-      if (!variantsRaw) {
-        setItems(VARIANTS_KEY, seedVariants);
-      }
-      setVariants(resolvedVariants);
+      const appsData = await listApps();
+      setApps(appsData);
+      const placementsData = await listPlacementsByApps(
+        appsData.map((app) => app.app_id)
+      );
+      setPlacements(placementsData);
+      const variantsData = await listVariantsByPlacements(placementsData);
+      setVariants(variantsData);
     } catch (loadError) {
-      setError("Failed to load variants data from localStorage.");
+      if (shouldUseFallback(loadError)) {
+        setApps(seedApps);
+        setPlacements(seedPlacements);
+        setVariants(seedVariants);
+        setError("API unavailable. Showing mock variants.");
+      } else {
+        setError(getErrorMessage(loadError));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   useEffect(() => {
@@ -126,15 +117,6 @@ export default function VariantsPage() {
       setFilterPlacementId("");
     }
   }, [filterAppId, filterPlacementId, placements]);
-
-  const saveVariants = (nextVariants: Variant[]) => {
-    setVariants(nextVariants);
-    try {
-      setItems(VARIANTS_KEY, nextVariants);
-    } catch (saveError) {
-      setError("Failed to save variants to localStorage.");
-    }
-  };
 
   const filteredPlacements = useMemo(() => {
     if (!filterAppId) {
@@ -181,21 +163,44 @@ export default function VariantsPage() {
     setEditingVariant(null);
   };
 
-  const handleToggleEnabled = (target: Variant) => {
-    const nextVariants = variants.map((variant) =>
-      variant.id === target.id
-        ? { ...variant, enabled: !variant.enabled }
-        : variant
-    );
-    saveVariants(nextVariants);
+  const handleToggleEnabled = async (target: Variant) => {
+    const nextEnabled = !target.enabled;
+    setError(null);
+    try {
+      const updated = await updateVariant(target.id, { enabled: nextEnabled });
+      setVariants((prev) =>
+        prev.map((variant) => (variant.id === target.id ? updated : variant))
+      );
+    } catch (updateError) {
+      if (shouldUseFallback(updateError)) {
+        setVariants((prev) =>
+          prev.map((variant) =>
+            variant.id === target.id ? { ...variant, enabled: nextEnabled } : variant
+          )
+        );
+        setError("API unavailable. Updated variant locally.");
+      } else {
+        setError(getErrorMessage(updateError));
+      }
+    }
   };
 
-  const handleDelete = (target: Variant) => {
+  const handleDelete = async (target: Variant) => {
     if (!window.confirm(`Delete variant ${target.id}?`)) {
       return;
     }
-    const nextVariants = variants.filter((variant) => variant.id !== target.id);
-    saveVariants(nextVariants);
+    setError(null);
+    try {
+      await deleteVariant(target.id);
+      setVariants((prev) => prev.filter((variant) => variant.id !== target.id));
+    } catch (deleteError) {
+      if (shouldUseFallback(deleteError)) {
+        setVariants((prev) => prev.filter((variant) => variant.id !== target.id));
+        setError("API unavailable. Deleted variant locally.");
+      } else {
+        setError(getErrorMessage(deleteError));
+      }
+    }
   };
 
   const handleFormAppChange = (value: string) => {
@@ -216,7 +221,7 @@ export default function VariantsPage() {
     });
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form.app_id || !form.placement_id || !form.package_id.trim()) {
       setError("app_id, placement_id, and package_id are required.");
@@ -224,8 +229,7 @@ export default function VariantsPage() {
     }
 
     const productIds = parseProductIds(form.product_ids);
-    const nextVariant: Variant = {
-      id: editingVariant?.id ?? buildShortId("var"),
+    const payload = {
       app_id: form.app_id,
       placement_id: form.placement_id,
       package_id: form.package_id.trim(),
@@ -236,20 +240,52 @@ export default function VariantsPage() {
       page_options: {
         auto_close_on_success: form.auto_close_on_success,
         auto_close_on_restore: form.auto_close_on_restore
-      },
-      created_at: editingVariant?.created_at ?? today()
+      }
     };
 
-    const nextVariants = editingVariant
-      ? variants.map((variant) =>
-          variant.id === editingVariant.id ? nextVariant : variant
-        )
-      : [nextVariant, ...variants];
-
-    saveVariants(nextVariants);
     setError(null);
-    setModalOpen(false);
-    setEditingVariant(null);
+    try {
+      if (editingVariant) {
+        const updated = await updateVariant(editingVariant.id, payload);
+        setVariants((prev) =>
+          prev.map((variant) =>
+            variant.id === editingVariant.id ? updated : variant
+          )
+        );
+      } else {
+        const created = await createVariant(payload);
+        setVariants((prev) => [created, ...prev]);
+      }
+      setModalOpen(false);
+      setEditingVariant(null);
+    } catch (saveError) {
+      if (shouldUseFallback(saveError)) {
+        const fallbackVariant: Variant = {
+          id: editingVariant?.id ?? buildShortId("var"),
+          app_id: payload.app_id,
+          placement_id: payload.placement_id,
+          package_id: payload.package_id,
+          offering_id: payload.offering_id,
+          product_ids: productIds,
+          priority: payload.priority,
+          enabled: payload.enabled,
+          page_options: payload.page_options,
+          created_at: editingVariant?.created_at ?? today()
+        };
+        setVariants((prev) =>
+          editingVariant
+            ? prev.map((variant) =>
+                variant.id === editingVariant.id ? fallbackVariant : variant
+              )
+            : [fallbackVariant, ...prev]
+        );
+        setModalOpen(false);
+        setEditingVariant(null);
+        setError("API unavailable. Saved variant locally.");
+      } else {
+        setError(getErrorMessage(saveError));
+      }
+    }
   };
 
   const formPlacements = placements.filter(
